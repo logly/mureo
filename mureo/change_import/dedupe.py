@@ -125,7 +125,9 @@ _RESOURCE_KINDS: dict[str, str] = {
 #: first hit wins, so the more specific verbs must precede the entity nouns.
 #: ``google_ads_campaigns_update_status`` has to read as a status change, not
 #: as a generic campaign edit, or the very case this exists to block would
-#: still match.
+#: still match. ``archive`` is a status verb for the same reason: a feed
+#: can report an archive as a ``status`` change (#1030), so
+#: ``*_ad_groups_archive`` must not read as an ad-group edit.
 _ACTION_KINDS: tuple[tuple[str, str], ...] = (
     ("budget", KIND_BUDGET),
     ("bid", KIND_BID),
@@ -140,6 +142,7 @@ _ACTION_KINDS: tuple[tuple[str, str], ...] = (
     ("pause", KIND_STATUS),
     ("enable", KIND_STATUS),
     ("resume", KIND_STATUS),
+    ("archive", KIND_STATUS),
     ("creative", KIND_AD),
     ("ads_create", KIND_AD),
     ("ads_update", KIND_AD),

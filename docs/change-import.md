@@ -220,7 +220,10 @@ A small shared vocabulary — `status`, `budget`, `bid`, `criterion`, `ad`,
   would drop the other edit silently.
 - **From `action_log`**: the tool name, matched verb-before-noun so
   `google_ads_campaigns_update_status` reads as `status` rather than
-  `campaign`.
+  `campaign`. `pause`, `enable`, `resume` and `archive` are status verbs
+  too: a feed can report an archive as a status change (the ChatGPT Ads
+  audit log does), so a `*_archive` tool reads as `status`, not as an
+  edit of the entity it names (#1030).
 
 **Both sides must yield a kind, and the two must be equal.** "Unknown matches
 anything" would restore identity-only behaviour for every action mureo cannot

@@ -687,6 +687,50 @@ _AD_GROUP_ROW = _row(obj_type="AdGroup", obj_id="adgrp_1", campaign_id="cmpn_1")
 _AD_ROW = _row(obj_type="Ad", obj_id="ad_1", campaign_id="cmpn_1")
 
 
+def _archive_row(obj_type: str, log_type: str, **ids: Any) -> dict[str, Any]:
+    """An archive as the audit log answers it: a ``status`` change."""
+    before, after = (
+        ({"status": "paused"}, {"status": "archived"})
+        if obj_type == "Campaign"
+        else ({"type": "paused"}, {"type": "archived"})
+    )
+    return _row(
+        audit_log_type=log_type,
+        obj_type=obj_type,
+        campaign_id="cmpn_1",
+        changes={"status": {"before": before, "after": after}, "obj_type": obj_type},
+        **ids,
+    )
+
+
+#: (archive tool, the identity it records, its audit row, test id).
+_ARCHIVES = [
+    (
+        "chatgpt_ads_campaigns_archive",
+        {"campaign_id": "cmpn_1"},
+        _archive_row("Campaign", "archive_campaign", obj_id="cmpn_1"),
+        "campaign-archive",
+    ),
+    (
+        "chatgpt_ads_ad_groups_archive",
+        {"ad_group_id": "adgrp_1"},
+        _archive_row("AdGroup", "archive_ad_group", obj_id="adgrp_1"),
+        "ad-group-archive",
+    ),
+    (
+        "chatgpt_ads_ads_archive",
+        {"ad_id": "ad_1"},
+        _archive_row("Ad", "archive_ad", ad_group_id="adgrp_1", obj_id="ad_1"),
+        "ad-archive",
+    ),
+]
+_OTHER_TARGET = {
+    "chatgpt_ads_campaigns_archive": {"campaign_id": "cmpn_2"},
+    "chatgpt_ads_ad_groups_archive": {"ad_group_id": "adgrp_2"},
+    "chatgpt_ads_ads_archive": {"ad_id": "ad_2"},
+}
+
+
 class TestAttribution:
     @pytest.mark.parametrize(
         ("tool", "arguments", "row"),
@@ -809,6 +853,39 @@ class TestAttribution:
     def test_an_ad_row_does_not_match_an_ad_group_change(self, tmp_path: Path) -> None:
         entry = _entry("chatgpt_ads_ad_groups_pause", {"ad_group_id": "adgrp_1"})
         row = {**_AD_ROW, "changes": {"status": {}}}
+        assert _verdict(tmp_path, entry, row) is ImportVerdict.IMPORT
+
+    @pytest.mark.parametrize(
+        ("tool", "arguments", "row"),
+        [pytest.param(*case[:3], id=case[3]) for case in _ARCHIVES],
+    )
+    def test_mureos_own_archive_is_attributed(
+        self, tmp_path: Path, tool: str, arguments: dict[str, Any], row: dict[str, Any]
+    ) -> None:
+        """The row is a status change, and so is the archive tool (#1030)."""
+        verdict = _verdict(tmp_path, _entry(tool, arguments), row)
+        assert verdict is ImportVerdict.ATTRIBUTED_TO_MUREO
+
+    @pytest.mark.parametrize(
+        "row", [pytest.param(case[2], id=case[3]) for case in _ARCHIVES]
+    )
+    def test_an_archive_mureo_did_not_make_is_imported(
+        self, tmp_path: Path, row: dict[str, Any]
+    ) -> None:
+        change = _map(row)
+        assert change is not None
+        state = read_state_file(_state(tmp_path))
+        verdict = classify_change(replace(change, platform=KEY), state)
+        assert verdict is ImportVerdict.IMPORT
+
+    @pytest.mark.parametrize(
+        ("tool", "row"),
+        [pytest.param(case[0], case[2], id=case[3]) for case in _ARCHIVES],
+    )
+    def test_an_archive_of_another_target_is_imported(
+        self, tmp_path: Path, tool: str, row: dict[str, Any]
+    ) -> None:
+        entry = _entry(tool, _OTHER_TARGET[tool])
         assert _verdict(tmp_path, entry, row) is ImportVerdict.IMPORT
 
 

@@ -48,7 +48,12 @@ from mureo.change_import import (
 from mureo.change_import import registry as registry_mod
 from mureo.change_import.builtin import builtin_change_feeds
 from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
-from mureo.change_import.dedupe import KIND_STATUS, change_kind
+from mureo.change_import.dedupe import (
+    KIND_STATUS,
+    _operations_conflict,
+    action_kind,
+    change_kind,
+)
 from mureo.change_import.registry import ChangeFeedRegistry
 from mureo.context.batch import batch_members
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
@@ -712,6 +717,29 @@ class TestNoDoubleCounting:
             campaign_id="111",
         )
         assert classify_change(budget_only, doc) is ImportVerdict.ATTRIBUTED_TO_MUREO
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "chatgpt_ads_campaigns_archive",
+            "chatgpt_ads_ad_groups_archive",
+            "chatgpt_ads_ads_archive",
+            "some_platform_ad_sets_archive",
+        ],
+    )
+    def test_an_archive_action_is_a_status_change(self, action: str) -> None:
+        """A feed reports an archive as a ``status`` change (#1030), so the
+        archive verb must outrank the entity noun the name also carries."""
+        assert action_kind(action) == KIND_STATUS
+
+    def test_an_archive_operation_does_not_refute_an_archive_action(self) -> None:
+        """``ARCHIVE`` is neither a create nor a remove, so it imposes no
+        constraint; only kind, target and window decide."""
+        entry = _log(action="some_platform_campaigns_archive").action_log[0]
+        change = _change(
+            resource_type="CAMPAIGN", operation="ARCHIVE", changed_fields=("status",)
+        )
+        assert _operations_conflict(entry, change) is False
 
 
 # ---------------------------------------------------------------------------
