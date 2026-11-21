@@ -103,7 +103,7 @@ def test_warning_mentions_followup_disable() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Disable-mureo extension (added 2026-05-12 per Founder Q1/Q2)
+# Auto-disable of the matching mureo tool family
 # ---------------------------------------------------------------------------
 #
 # After the disable-mureo extension lands, the warning helper gains an
@@ -167,3 +167,88 @@ def test_warning_signature_default_preserves_backwards_compat() -> None:
     assert isinstance(msg, str) and msg.strip() != ""
     lowered = msg.lower()
     assert "auto-disabled" in lowered or "auto disabled" in lowered
+
+
+# ---------------------------------------------------------------------------
+# Platforms without a native tool family (#1039). GA4 owns a
+# ``MUREO_DISABLE_GA4`` flag, but the server registers no GA4 tools, so the
+# note states only the env entry that was set.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("platform", "expected"),
+    [
+        ("google_ads", True),
+        ("meta_ads", True),
+        ("ga4", False),
+        ("acme_ads", False),
+    ],
+)
+def test_has_native_tools(platform: str, expected: bool) -> None:
+    from mureo.providers.coexistence import has_native_tools
+
+    assert has_native_tools(platform) is expected
+
+
+@pytest.mark.unit
+def test_ga4_block_present_note_describes_no_native_tools() -> None:
+    """The GA4 note names the env entry and how to undo it, and does not
+    claim that GA4 tools were switched off."""
+    from mureo.providers.catalog import get_provider
+    from mureo.providers.coexistence import coexistence_warning
+
+    msg = coexistence_warning(get_provider("ga4-official"), mureo_block_present=True)
+
+    assert msg is not None
+    assert "MUREO_DISABLE_GA4" in msg
+    assert "manually" in msg
+    assert "mureo providers remove ga4-official" in msg
+    assert "auto-disabled" not in msg
+
+
+@pytest.mark.unit
+def test_google_ads_block_present_note_keeps_auto_disabled_wording() -> None:
+    from mureo.providers.catalog import get_provider
+    from mureo.providers.coexistence import coexistence_warning
+
+    msg = coexistence_warning(
+        get_provider("google-ads-official"), mureo_block_present=True
+    )
+
+    assert msg is not None
+    assert "tools have been auto-disabled" in msg
+
+
+@pytest.mark.unit
+def test_has_native_tools_matches_the_tools_the_server_registers() -> None:
+    """Drift guard: a platform has native tools exactly when the server owns
+    a built-in tool named ``<platform>_...``. Every platform that has a
+    label, is declared native, or is named by a catalog entry is compared.
+
+    ``_RESERVED_BUILTIN_NAMES`` is every built-in tool name with the
+    ``MUREO_DISABLE_*`` gates ignored and no plugin tools, so the answer does
+    not depend on the environment the test runs in.
+    """
+    from mureo.mcp import server as mcp_server
+    from mureo.providers.catalog import CATALOG
+    from mureo.providers.coexistence import (
+        _PLATFORM_LABELS,
+        _PLATFORMS_WITH_NATIVE_TOOLS,
+        has_native_tools,
+    )
+
+    declared = {
+        spec.coexists_with_mureo_platform
+        for spec in CATALOG
+        if spec.coexists_with_mureo_platform is not None
+    }
+    platforms = set(_PLATFORM_LABELS) | _PLATFORMS_WITH_NATIVE_TOOLS | declared
+    assert {"google_ads", "meta_ads", "ga4"} <= platforms
+    for platform in sorted(platforms):
+        registered = any(
+            name.startswith(f"{platform}_")
+            for name in mcp_server._RESERVED_BUILTIN_NAMES
+        )
+        assert has_native_tools(platform) is registered, platform

@@ -71,7 +71,7 @@ elsewhere?":
   there is something to refuse and a caller to tell.
 - **The document arrived from elsewhere — never refuse.**
   ``write_state_file`` and everything funnelling through it
-  (``FilesystemStateStore.write_state``, mureo-agency's digest sync, a
+  (``FilesystemStateStore.write_state``, an out-of-tree writer's sync, a
   restored backup, an import), plus the tolerant parse in
   :mod:`mureo.context.state_codec` and the demo installer, which renders a
   scenario's STATE.json straight to disk. A whole document has no notion of
@@ -343,8 +343,8 @@ def reject_unknown_platform_key(platform: str) -> None:
       from another machine, an uninstalled bridge or a restored backup stays
       writable.
 
-    Refusing is what stops an agent inventing a key: ``logly_ads`` for a bridge
-    whose provider is ``logly_ads_context`` produced a second entry holding the
+    Refusing is what stops an agent inventing a key: ``acme_ads`` for a bridge
+    whose provider is ``acme_ads_context`` produced a second entry holding the
     same ad account, which the reporting view then summed (#609, the upstream
     cause of #606). This is deliberately not a rewrite — canonicalizing an
     unknown key would change the key the operator sees without saying so, which
@@ -454,7 +454,7 @@ def warn_on_duplicate_accounts(path: Path, doc: StateDocument) -> None:
 
     What this covers that they cannot: a writer that assembles a complete
     :class:`~mureo.context.models.StateDocument` itself and writes it wholesale
-    — mureo-agency's digest sync is the observed one — never calls
+    — an out-of-tree writer's sync is the observed one — never calls
     ``upsert_campaign`` / ``set_platform_metrics`` /
     ``set_conversion_action_types``, so the create-time guard never sees it.
     Every such writer still funnels through ``write_state_file``

@@ -1598,11 +1598,14 @@ mureo-specific Protocol method:
     verbatim into the entry's `reversible_params`. Since #324 this is
     **executable**, not audit-only: `rollback_plan_get` builds a real
     reversal when `operation` names a *registered, non-destructive*
-    tool — a built-in from mureo's rollback allow-list, or one of your
-    own plugin tools. (An `operation` naming an unregistered or
-    destructive tool is still recorded for audit but is not applied.)
-    The reversal's params are bounded by the target tool's declared
-    `inputSchema` property names.
+    tool — a built-in from mureo's rollback allow-list, or a registered
+    plugin tool (normally one of your own; mureo checks that the tool is
+    registered, not which plugin registered it). (An `operation` naming
+    an unregistered or destructive tool is still recorded for audit but
+    is not applied.) The reversal's params are bounded by the target
+    tool's declared top-level `inputSchema` property names; a plugin
+    tool that declares none has no bound when the plan is built, and
+    its params are validated when the reversal runs.
   - **Runtime-correct reversal** (`MCPReversibleToolProvider`, #327/#328)
     — a *static* `reversal` cannot know the entity id the platform will
     mint, nor the prior state you are about to overwrite. Implement the
@@ -1631,8 +1634,11 @@ mureo-specific Protocol method:
     The method is `async`. Return `None` to fall back to the static hint.
     It is best-effort: an exception is logged and the mutation proceeds
     with the static hint (auditing must never break the call). For
-    `rollback_apply` to execute it, `operation` must name a registered,
-    non-destructive tool of the same plugin. A provider that does not
+    `rollback_apply` to execute it, the same rules as the static hint
+    apply: `operation` must name a registered, non-destructive tool (an
+    allow-listed built-in or a registered plugin tool), and `params`
+    may carry only the top-level property names that tool declares.
+    A provider that does not
     implement it keeps its static `meta["mureo"]["reversal"]` behavior
     unchanged.
   - `"throttle": {"rate": <float>, "burst": <int>, "hourly_limit": <int|null>}`

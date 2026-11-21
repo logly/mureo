@@ -16,9 +16,9 @@ gate(s) first (see :func:`mureo.mcp.server._builtin_policy_gates`), then
 any gates registered by third-party packages via the ``mureo.policy_gates``
 entry-point group.
 
-This entry-point contract lets third-party packages (for example
-``mureo-agency``, which builds a read-only mode for ad-platform
-mutations) plug additional policy logic into mureo without forking the
+This entry-point contract lets third-party packages (for example one that
+adds a read-only mode for ad-platform mutations) plug additional policy
+logic into mureo without forking the
 dispatcher, on equal footing with the built-in gate. ``_load_policy_gates``
 returns only the entry-point gates; the built-in gate is added separately
 at evaluation time.
@@ -90,7 +90,7 @@ class PolicyGate(Protocol):
     ``mureo.policy_gates`` entry-point group::
 
         [project.entry-points."mureo.policy_gates"]
-        read_only = "mureo_agency.policy:ReadOnlyGate"
+        read_only = "acme_policy.gates:ReadOnlyGate"
 
     mureo's dispatcher consults all registered gates before
     dispatching each tool call. See the module docstring for the

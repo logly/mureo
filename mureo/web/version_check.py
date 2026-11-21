@@ -12,9 +12,8 @@ routinely exceeds the timeout and surfaces "could not check for updates".
 Restricting the query to mureo + its plugins keeps it to a few seconds.
 
 Why pip (not a direct PyPI query): running pip respects the operator's
-configured package index, so private bridges (``mureo-logly-bridge``,
-``mureo-agency`` — potentially on a private index, not public PyPI) are
-checked correctly, and it shares the venv / index resolution that
+configured package index, so plugins published on a private index rather
+than public PyPI are checked correctly, and it shares the venv / index resolution that
 ``mureo upgrade`` uses. A package lands in the report's ``install`` list
 when pip's resolver would change its version; we additionally require the
 index version to be strictly newer than the installed one (a pinning

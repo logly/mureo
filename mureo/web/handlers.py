@@ -1090,8 +1090,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         it also hides each OAuth provider's post-auth picker field
         (``accounts_field``) — the account is chosen per-client at runtime,
         so a single configure-time ``account_id`` is meaningless. This is
-        merged with the backend's own ``ui_plugin_credential_fields`` so the
-        agency backend need declare nothing for it (``mureo-pro`` unchanged);
+        merged with the backend's own ``ui_plugin_credential_fields`` so a
+        multi-account backend need declare nothing for it (a single-account
+        backend is unchanged);
         an explicit backend scope for a provider wins, since it is the more
         specific authority.
         """

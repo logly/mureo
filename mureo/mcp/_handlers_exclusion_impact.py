@@ -10,7 +10,7 @@ platforms mureo does not own:
    registered).
 2. ``excluded_entities`` + ``delivery_records`` — the caller supplies both
    sides. Reaches no platform API at all, so a Yahoo placement URL list, a
-   LOGLY adspot block or an Amazon negative-targeting batch is auditable
+   plugin platform's placement block or an Amazon negative-targeting batch is auditable
    whenever the agent can pull that platform's own report itself.
 
 ``delivery_records`` may also be combined with ``tool``, which then reads

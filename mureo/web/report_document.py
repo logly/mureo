@@ -129,7 +129,7 @@ guess.
 That resolver now reads the **same** installed-plugin enumeration the write
 guard does (:func:`~mureo.context.platform_guards.installed_platform_names`,
 #631), so this signal can no longer fire on a key mureo itself accepted on
-write. Until it did, a bare provider name — ``logly_ads_context``, the LOGLY
+write. Until it did, a bare provider name — ``acme_ads_context``, a plugin
 bridge's real platform name — was accepted by the guard, reported ``Clean``
 by ``mureo repair platform-key``, and flagged here, all on one machine at one
 moment. An operator who learns this fires on healthy state stops reading it,

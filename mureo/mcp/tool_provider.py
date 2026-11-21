@@ -113,10 +113,14 @@ class MCPReversibleToolProvider(Protocol):
     A provider opts in by *also* implementing this method. mureo calls it
     **before** a mutating tool runs; the returned reversal (if any) is what
     gets recorded into the ``action_log`` instead of the static ``meta``
-    reversal. The reversal's ``operation`` must name a registered,
-    non-destructive tool of the same plugin for ``rollback_apply`` to
-    execute it (the rollback planner enforces this — see
-    :mod:`mureo.rollback.planner`).
+    reversal. For ``rollback_apply`` to execute it, the reversal's
+    ``operation`` must name a registered, non-destructive tool (a built-in
+    from mureo's rollback allow-list, or a registered plugin tool), and its
+    ``params`` may carry only the top-level property names that tool
+    declares; a plugin tool whose ``inputSchema`` declares none has no
+    plan-time key bound and is checked when the reversal runs.
+    :mod:`mureo.rollback.planner` checks that a plugin tool is registered,
+    not which provider registered it.
     """
 
     async def capture_reversal(

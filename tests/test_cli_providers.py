@@ -406,7 +406,7 @@ def test_main_registers_providers_app(home: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Disable-mureo extension (added 2026-05-12 per Founder Q1/Q2)
+# Auto-disable of the matching mureo tool family
 # ---------------------------------------------------------------------------
 #
 # These tests verify that ``mureo providers add`` also writes the matching
@@ -765,9 +765,71 @@ def test_add_dry_run_credentialed_prints_auto_disable(home: Path) -> None:
 
     assert "unresolved required env (none)" in result.output
     assert 'would set mcpServers.mureo.env.MUREO_DISABLE_GA4="1"' in result.output
-    assert "auto-disabled" in result.output
+    assert 'mcpServers.mureo.env.MUREO_DISABLE_GA4="1" has been set' in result.output
     assert result.stderr == ""
     assert not (home / ".claude.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# A platform without native tools (#1039): GA4 owns ``MUREO_DISABLE_GA4``,
+# but mureo registers no GA4 tools, so the notes name only the env entry.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_add_ga4_without_credentials_does_not_claim_native_tools(
+    home: Path,
+) -> None:
+    _seed_mureo_block(home / ".claude.json")
+
+    result = _invoke("providers", "add", "ga4-official")
+    assert result.exit_code == 0, result.output
+
+    combined = (result.output or "") + (result.stderr or "")
+    assert "GOOGLE_APPLICATION_CREDENTIALS" in result.stderr
+    assert "stay active" not in combined
+
+
+@pytest.mark.integration
+def test_add_google_ads_without_credentials_keeps_native_tail(home: Path) -> None:
+    _seed_mureo_block(home / ".claude.json")
+
+    result = _invoke("providers", "add", "google-ads-official")
+    assert result.exit_code == 0, result.output
+
+    assert "mureo's native google_ads tools stay active until then." in result.stderr
+
+
+@pytest.mark.integration
+def test_remove_ga4_clears_env_without_claiming_reregistration(home: Path) -> None:
+    _seed_mureo_block(home / ".claude.json")
+    _seed_credentials(
+        home,
+        "ga4",
+        {"service_account_path": _adc_file(home), "project_id": "proj-123"},
+    )
+    add = _invoke("providers", "add", "ga4-official")
+    assert add.exit_code == 0, add.output
+    assert _read_settings(home)["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_GA4"]
+
+    remove = _invoke("providers", "remove", "ga4-official")
+    assert remove.exit_code == 0, remove.output
+
+    assert "cleared mcpServers.mureo.env.MUREO_DISABLE_GA4" in remove.output
+    assert "re-register" not in remove.output
+
+
+@pytest.mark.integration
+def test_remove_google_ads_still_says_native_tools_reregister(home: Path) -> None:
+    _seed_mureo_block(home / ".claude.json")
+    _seed_credentials(home, "google_ads", {"service_account_path": _adc_file(home)})
+    add = _invoke("providers", "add", "google-ads-official")
+    assert add.exit_code == 0, add.output
+
+    remove = _invoke("providers", "remove", "google-ads-official")
+    assert remove.exit_code == 0, remove.output
+
+    assert "will re-register" in remove.output
 
 
 # ---------------------------------------------------------------------------

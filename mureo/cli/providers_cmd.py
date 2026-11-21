@@ -23,7 +23,7 @@ from rich.table import Table
 from mureo.core.atomic_json import load_existing_json
 from mureo.core.runtime_context import runtime_credentials_path
 from mureo.providers.catalog import CATALOG, ProviderSpec, get_provider
-from mureo.providers.coexistence import coexistence_warning
+from mureo.providers.coexistence import coexistence_warning, has_native_tools
 from mureo.providers.config_writer import (
     _default_settings_path,
     add_provider_to_claude_settings,
@@ -106,8 +106,10 @@ _NEEDS_CREDENTIALS_NOTE = (
     "{names} could not be resolved from the credential store (missing, or "
     "pointing at a file that cannot be read). Run `mureo configure` and "
     "finish the {platform} step (or set them on the dashboard), then "
-    "run this command again. mureo's native {platform} tools stay active "
-    "until then."
+    "run this command again."
+)
+_NEEDS_CREDENTIALS_NATIVE_TAIL = (
+    " mureo's native {platform} tools stay active until then."
 )
 _NEEDS_CREDENTIALS_STATE = "is registered but cannot authenticate"
 _NEEDS_CREDENTIALS_STATE_DRY_RUN = "would be registered but could not authenticate"
@@ -119,28 +121,28 @@ def _emit_needs_credentials(
     """Tell the operator the provider cannot authenticate yet, on stderr.
 
     The CLI counterpart of the configure UI's ``needs_credentials`` card:
-    the provider is registered with whatever env resolved, native stays
-    on, and the message names the required env still unresolved so the
-    operator knows what to store before re-running the install. With
+    the provider is registered with whatever env resolved, the
+    ``MUREO_DISABLE_<PLATFORM>`` flag stays unset, and the message names the
+    required env still unresolved so the operator knows what to store before
+    re-running the install. The sentence that native tools stay active is
+    added only for a platform that has them (:func:`has_native_tools`). With
     ``dry_run`` nothing was registered, so the note says what would happen.
     """
     platform = spec.coexists_with_mureo_platform
     if platform is None:
         return
     names = ", ".join(unresolved_required_env(spec, extra_env))
-    typer.echo(
-        _NEEDS_CREDENTIALS_NOTE.format(
-            provider_id=spec.id,
-            state=(
-                _NEEDS_CREDENTIALS_STATE_DRY_RUN
-                if dry_run
-                else _NEEDS_CREDENTIALS_STATE
-            ),
-            names=names,
-            platform=platform,
+    note = _NEEDS_CREDENTIALS_NOTE.format(
+        provider_id=spec.id,
+        state=(
+            _NEEDS_CREDENTIALS_STATE_DRY_RUN if dry_run else _NEEDS_CREDENTIALS_STATE
         ),
-        err=True,
+        names=names,
+        platform=platform,
     )
+    if has_native_tools(platform):
+        note += _NEEDS_CREDENTIALS_NATIVE_TAIL.format(platform=platform)
+    typer.echo(note, err=True)
 
 
 def _emit_hosted_auth_notice(spec: ProviderSpec, *, dry_run: bool) -> None:
@@ -283,7 +285,8 @@ def _register_installed(spec: ProviderSpec, extra_env: Mapping[str, str]) -> Non
     exists, the same atomic write flips
     ``mcpServers.mureo.env.MUREO_DISABLE_<PLATFORM>=1`` and the coexistence
     note follows (the degraded variant when no mureo block exists). When it
-    is not credentialed, native stays on and the missing env is named.
+    is not credentialed, the flag stays unset (native tools, where the
+    platform has them, stay on) and the missing env is named.
     """
     credentialed, mureo_block_present = _register_provider(spec, extra_env)
     typer.echo(f"installed {spec.id}")
@@ -422,9 +425,10 @@ def remove_cmd(
             "Catalog id to remove from ~/.claude/settings.json. "
             "Does not uninstall the underlying pipx/npm package "
             "(no-op for hosted-HTTP providers, which have none). "
-            "If the provider overlaps with a mureo-native platform, the "
-            "matching MUREO_DISABLE_* env var on mcpServers.mureo.env is "
-            "also popped so mureo's tools re-register on next startup."
+            "If the provider has a matching MUREO_DISABLE_* env var on "
+            "mcpServers.mureo.env, it is also popped, so mureo's native "
+            "tools for that platform (where it has any) register again on "
+            "next startup."
         ),
     ),
 ) -> None:
@@ -445,18 +449,22 @@ def remove_cmd(
     else:
         typer.echo(f"{provider_id} was not registered; nothing to remove")
 
-    # Pop the matching MUREO_DISABLE_* env var so mureo's native tools
-    # re-register on next startup. No-op when the spec doesn't overlap
-    # with a mureo-native platform or when the env var is absent.
+    # Pop the matching MUREO_DISABLE_* env var; for a platform with native
+    # tools they re-register on next startup, for one without (GA4) only the
+    # env entry goes. No-op when the spec has no coexistence platform or
+    # when the env var is absent.
     platform = spec.coexists_with_mureo_platform
     if platform is not None:
         env_result = unset_mureo_disable_env(platform)
         if env_result.changed:
             env_var = f"MUREO_DISABLE_{platform.upper()}"
-            typer.echo(
-                f"cleared mcpServers.mureo.env.{env_var}; "
-                f"mureo's native tools for this platform will re-register"
-            )
+            if has_native_tools(platform):
+                typer.echo(
+                    f"cleared mcpServers.mureo.env.{env_var}; "
+                    f"mureo's native tools for this platform will re-register"
+                )
+            else:
+                typer.echo(f"cleared mcpServers.mureo.env.{env_var}")
 
 
 @providers_app.command("confirm")

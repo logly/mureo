@@ -365,7 +365,7 @@ class ConfigureWizard:
         wants a self-contained path bundle rooted at that home. The
         process-global runtime-context factory is resolved from entry
         points and its paths live OUTSIDE that sandbox (in dev/CI a
-        third-party factory such as ``mureo-agency`` resolves against the
+        third-party runtime-context factory resolves against the
         operator's real ``~/.mureo``), so consulting it here would let a
         configure-UI write escape the injected home and clobber real
         credentials. Production ``mureo configure`` always runs with

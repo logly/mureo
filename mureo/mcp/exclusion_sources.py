@@ -33,7 +33,7 @@ Surface                                 Delivery attributable?
                                         (``meta_ads_ad_sets_update`` targeting).
                                         Reported ``unknown``, never "no impact".
 Plugins / bridges                       Whatever they register. mureo registers
-(Yahoo, LINE, SmartNews, LOGLY,         nothing on their behalf: guessing a
+(plugin platforms,                      nothing on their behalf: guessing a
 Amazon)                                 bridged tool's argument shape would
                                         produce a confident wrong number.
 ======================================  =========================================
