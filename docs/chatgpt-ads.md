@@ -924,8 +924,11 @@ The STATE.json platform key is `plugin:mureo-chatgpt-ads:chatgpt_ads`.
   archive, no cancel or resume of an audience operation, no operation
   listing, no audience created from a file, no conversion API keys and no
   read of recent conversion events.
-- **Other insights options.** No segments, filters, sorting, zero-row
-  includes, hourly or monthly buckets, or attribution time basis.
+- **Other insights options.** `chatgpt_ads_insights_report` takes no
+  segments, filters, sorting, zero-row includes or attribution time basis.
+  `chatgpt_ads_conversions_report` does take `breakdown`,
+  `include_zero_rows` and `attribution_time_basis`, and no filters or
+  sorting. Neither report offers hourly or monthly buckets.
 - **BYOD.** ChatGPT Ads is not part of BYOD mode.
 - **mureo-only analysis.** Anomaly baselines and the other analyses keyed to
   the Google Ads and Meta Ads tools do not exist for ChatGPT Ads; treat
