@@ -43,13 +43,13 @@ def _clear_runtime_context_cache() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _pin_logly_bridge_installed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """One installed provider, ``logly_ads_context`` — the reported machine.
+def _pin_acme_bridge_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One installed provider, ``acme_ads_context``, and nothing else.
 
-    Pinned for every test here: this machine really does have that bridge
+    Pinned for every test here: a developer machine may have real bridges
     installed, so an unpinned test would pass without asserting anything.
     """
-    entries = (SimpleNamespace(name="logly_ads_context"),)
+    entries = (SimpleNamespace(name="acme_ads_context"),)
     monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
 
 
@@ -64,7 +64,7 @@ def _reported_state(path: Path) -> None:
             "version": "2",
             "last_synced_at": "2026-08-12T01:00:00+00:00",
             "platforms": {
-                "logly_ads": {
+                "acme_ads": {
                     "account_id": "1234567890",
                     "campaigns": [
                         {
@@ -86,7 +86,7 @@ def _reported_state(path: Path) -> None:
                         }
                     },
                 },
-                "logly_ads_context": {
+                "acme_ads_context": {
                     "account_id": "1234567890",
                     "totals": {
                         "spend": 4500.0,
@@ -118,8 +118,8 @@ class TestDryRunIsTheDefault:
 
         assert result.exit_code == 0, result.output
         out = result.output
-        assert "logly_ads" in out
-        assert "logly_ads_context" in out
+        assert "acme_ads" in out
+        assert "acme_ads_context" in out
         assert "1234567890" in out  # the ad account
         assert "2026-08-01T03:00:00+00:00" in out  # the bad entry's fetched_at
         assert "2026-08-12T03:00:00+00:00" in out  # the good entry's fetched_at
@@ -144,7 +144,7 @@ class TestDryRunIsTheDefault:
             state,
             {
                 "version": "2",
-                "platforms": {"logly_ads_context": {"account_id": "1234567890"}},
+                "platforms": {"acme_ads_context": {"account_id": "1234567890"}},
             },
         )
 
@@ -184,7 +184,7 @@ class TestAnUnreadableDocument:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1234567890", "campaigns": []}
+                    "acme_ads": {"account_id": "1234567890", "campaigns": []}
                 },
                 # Still refused by the strict read: a decision record that is
                 # not an object (one missing its required fields no longer
@@ -213,7 +213,7 @@ class TestAnUnreadableDocument:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1234567890", "campaigns": []}
+                    "acme_ads": {"account_id": "1234567890", "campaigns": []}
                 },
                 # Still refused by the strict read: a decision record that is
                 # not an object (one missing its required fields no longer
@@ -297,12 +297,12 @@ class TestApply:
 
         assert result.exit_code == 0, result.output
         payload = json.loads(state.read_text(encoding="utf-8"))
-        assert set(payload["platforms"]) == {"logly_ads_context"}
+        assert set(payload["platforms"]) == {"acme_ads_context"}
         backups = list(tmp_path.glob("STATE.json.bak.*"))
         assert len(backups) == 1
         assert str(backups[0]) in result.output
         restored = json.loads(backups[0].read_text(encoding="utf-8"))
-        assert set(restored["platforms"]) == {"logly_ads", "logly_ads_context"}
+        assert set(restored["platforms"]) == {"acme_ads", "acme_ads_context"}
 
     def test_apply_declines_when_the_answer_is_no(self, tmp_path: Path) -> None:
         state = tmp_path / "STATE.json"
@@ -350,7 +350,7 @@ class TestScope:
                 "version": "2",
                 "platforms": {
                     "google_ads": {"account_id": "1234567890"},
-                    "logly_ads_context": {"account_id": "1234567890"},
+                    "acme_ads_context": {"account_id": "1234567890"},
                 },
             },
         )
@@ -361,7 +361,7 @@ class TestScope:
         assert result.exit_code == 0, result.output
         assert state.read_bytes() == before
         assert "google_ads" in result.output
-        assert "logly_ads_context" in result.output
+        assert "acme_ads_context" in result.output
         # It says why mureo will not choose, rather than going silent.
         assert "mureo does not choose" in result.output
 
@@ -369,10 +369,10 @@ class TestScope:
         state = tmp_path / "STATE.json"
         _reported_state(state)
 
-        result = _run("--state-file", str(state), "--key", "logly_ads_context")
+        result = _run("--state-file", str(state), "--key", "acme_ads_context")
 
         assert result.exit_code == 1
-        assert "logly_ads_context" in result.output
+        assert "acme_ads_context" in result.output
         assert state.read_bytes()  # untouched
 
     def test_naming_an_absent_key_is_refused(self, tmp_path: Path) -> None:
@@ -391,17 +391,17 @@ class TestScope:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1"},
-                    "logly_adz": {"account_id": "2"},
+                    "acme_ads": {"account_id": "1"},
+                    "acme_adz": {"account_id": "2"},
                 },
             },
         )
 
-        result = _run("--state-file", str(state), "--key", "logly_ads", "--apply", "-y")
+        result = _run("--state-file", str(state), "--key", "acme_ads", "--apply", "-y")
 
         assert result.exit_code == 0, result.output
         payload = json.loads(state.read_text(encoding="utf-8"))
-        assert set(payload["platforms"]) == {"logly_adz"}
+        assert set(payload["platforms"]) == {"acme_adz"}
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +420,7 @@ class TestThePreviewIsTrue:
     def test_a_solitary_entry_with_figures_is_reported_not_offered(
         self, tmp_path: Path
     ) -> None:
-        """#616. ``logly_ads_v2`` is not registered by the one pinned plugin,
+        """#616. ``acme_ads_v2`` is not registered by the one pinned plugin,
         but nothing in the document says it is wrong — so it is handed back."""
         state = tmp_path / "STATE.json"
         _write(
@@ -428,7 +428,7 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_v2": {
+                    "acme_ads_v2": {
                         "account_id": "1234567890",
                         "totals": {
                             "spend": 128000.0,
@@ -460,11 +460,11 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "conversion_action_types": ["offsite_conversion.custom.90210"],
                     },
-                    "logly_ads_context": {"account_id": "1234567890"},
+                    "acme_ads_context": {"account_id": "1234567890"},
                 },
             },
         )
@@ -492,7 +492,7 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
@@ -527,7 +527,7 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
@@ -558,7 +558,7 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_v2": {
+                    "acme_ads_v2": {
                         "account_id": "1234567890",
                         "totals": {
                             "spend": 128000.0,
@@ -586,7 +586,7 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_v2": {
+                    "acme_ads_v2": {
                         "account_id": "1234567890",
                         "totals": {
                             "spend": 128000.0,
@@ -619,14 +619,14 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
                             "reason": "the access token expired",
                         },
                     },
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
                         "totals": {
                             "spend": 4500.0,
@@ -657,14 +657,14 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
                             "reason": "the access token expired",
                         },
                     },
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
                         "totals": {
                             "spend": 4500.0,
@@ -708,9 +708,9 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1111111111"},
-                    "logly_adz": {"account_id": "2222222222"},
-                    "logly_ads_context": {"account_id": "3333333333"},
+                    "acme_ads": {"account_id": "1111111111"},
+                    "acme_adz": {"account_id": "2222222222"},
+                    "acme_ads_context": {"account_id": "3333333333"},
                 },
             },
         )
@@ -722,7 +722,7 @@ class TestThePreviewIsTrue:
         assert "Found 2 platform entries" in out
         assert "other platform entry is left exactly as it is" not in out
         assert "other than the 2 this run removes" in out
-        assert "This run removes: logly_ads, logly_adz." in out
+        assert "This run removes: acme_ads, acme_adz." in out
 
     def test_one_entry_in_a_plan_keeps_the_plain_reassurance(
         self, tmp_path: Path
@@ -746,8 +746,8 @@ class TestThePreviewIsTrue:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1234567890"},
-                    "logly_adz": {"account_id": "1234567890"},
+                    "acme_ads": {"account_id": "1234567890"},
+                    "acme_adz": {"account_id": "1234567890"},
                 },
             },
         )
@@ -789,14 +789,14 @@ def _both_keys_resolve_state(path: Path) -> None:
         {
             "version": "2",
             "platforms": {
-                "plugin:mureo-logly-bridge": {
+                "plugin:mureo-acme-bridge": {
                     "account_id": "1234567890",
                     "totals": {
                         "spend": 9000.0,
                         "fetched_at": "2026-08-01T03:00:00+00:00",
                     },
                 },
-                "logly_ads_context": {
+                "acme_ads_context": {
                     "account_id": "1234567890",
                     "totals": {
                         "spend": 4500.0,
@@ -872,7 +872,7 @@ class TestAPlaceholderIdPrintsAsNoneRecorded:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "tbd",
                         "totals": {"spend": 1.0},
                     },
@@ -909,7 +909,7 @@ class TestChoosingWhichDuplicateToDrop:
             "--state-file",
             str(state),
             "--key",
-            "plugin:mureo-logly-bridge",
+            "plugin:mureo-acme-bridge",
             "--apply",
             "-y",
         )
@@ -928,7 +928,7 @@ class TestChoosingWhichDuplicateToDrop:
             "--state-file",
             str(state),
             "--key",
-            "plugin:mureo-logly-bridge",
+            "plugin:mureo-acme-bridge",
             "--drop-duplicate",
         )
 
@@ -938,14 +938,14 @@ class TestChoosingWhichDuplicateToDrop:
         assert list(tmp_path.glob("STATE.json.bak*")) == []
         assert "this was a dry run" in result.output
         # It shows the evidence in the document, not just the key.
-        assert "logly_ads_context" in result.output
+        assert "acme_ads_context" in result.output
         assert "1234567890" in result.output
         # "Run the same command with --apply" has to name the SAME command:
         # the bare one would repair the whole document instead, and one
         # missing --drop-duplicate would do nothing at all.
         assert (
             f'mureo repair platform-key --state-file "{state}" '
-            f"--key plugin:mureo-logly-bridge --drop-duplicate --apply"
+            f"--key plugin:mureo-acme-bridge --drop-duplicate --apply"
         ) in result.output
 
     def test_apply_removes_the_named_entry_and_backs_up_first(
@@ -958,7 +958,7 @@ class TestChoosingWhichDuplicateToDrop:
             "--state-file",
             str(state),
             "--key",
-            "plugin:mureo-logly-bridge",
+            "plugin:mureo-acme-bridge",
             "--drop-duplicate",
             "--apply",
             "-y",
@@ -966,13 +966,13 @@ class TestChoosingWhichDuplicateToDrop:
 
         assert result.exit_code == 0, result.output
         payload = json.loads(state.read_text(encoding="utf-8"))
-        assert set(payload["platforms"]) == {"logly_ads_context"}
+        assert set(payload["platforms"]) == {"acme_ads_context"}
         backups = list(tmp_path.glob("STATE.json.bak.*"))
         assert len(backups) == 1
         restored = json.loads(backups[0].read_text(encoding="utf-8"))
         assert set(restored["platforms"]) == {
-            "plugin:mureo-logly-bridge",
-            "logly_ads_context",
+            "plugin:mureo-acme-bridge",
+            "acme_ads_context",
         }
 
     def test_apply_without_a_tty_still_declines(self, tmp_path: Path) -> None:
@@ -985,7 +985,7 @@ class TestChoosingWhichDuplicateToDrop:
             "--state-file",
             str(state),
             "--key",
-            "plugin:mureo-logly-bridge",
+            "plugin:mureo-acme-bridge",
             "--drop-duplicate",
             "--apply",
         )
@@ -1009,7 +1009,7 @@ class TestChoosingWhichDuplicateToDrop:
         """A decision about which of two sets of figures is true is made by
         looking at ONE document. ``--all`` would apply it to documents the
         operator has not seen."""
-        result = _run("--all", "--key", "logly_ads_context", "--drop-duplicate")
+        result = _run("--all", "--key", "acme_ads_context", "--drop-duplicate")
 
         assert result.exit_code == 1
         assert "--all" in result.output
@@ -1021,7 +1021,7 @@ class TestChoosingWhichDuplicateToDrop:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
                         "totals": {"spend": 10.0},
                     },
@@ -1035,7 +1035,7 @@ class TestChoosingWhichDuplicateToDrop:
             "--state-file",
             str(state),
             "--key",
-            "logly_ads_context",
+            "acme_ads_context",
             "--drop-duplicate",
             "--apply",
             "-y",
@@ -1056,11 +1056,11 @@ class TestChoosingWhichDuplicateToDrop:
             {
                 "version": "2",
                 "platforms": {
-                    "plugin:mureo-logly-bridge": {
+                    "plugin:mureo-acme-bridge": {
                         "account_id": "1234567890",
                         "conversion_action_types": ["offsite_conversion.custom.90210"],
                     },
-                    "logly_ads_context": {"account_id": "1234567890"},
+                    "acme_ads_context": {"account_id": "1234567890"},
                 },
             },
         )
@@ -1070,7 +1070,7 @@ class TestChoosingWhichDuplicateToDrop:
             "--state-file",
             str(state),
             "--key",
-            "plugin:mureo-logly-bridge",
+            "plugin:mureo-acme-bridge",
             "--drop-duplicate",
             "--apply",
             "-y",
@@ -1172,7 +1172,7 @@ class TestTheUndecidableBlockShowsTheEvidence:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_context": {"account_id": "1234567890"},
+                    "acme_ads_context": {"account_id": "1234567890"},
                     "google_ads": {
                         "account_id": "1234567890",
                         "totals": {
@@ -1187,7 +1187,7 @@ class TestTheUndecidableBlockShowsTheEvidence:
         result = _run("--state-file", str(state))
 
         assert result.exit_code == 0, result.output
-        body = _entry_lines(result.output, "logly_ads_context")
+        body = _entry_lines(result.output, "acme_ads_context")
         assert body[0].startswith("campaigns:")
         assert body[0].endswith("0")
         assert body[1] == "totals:      none stored"
@@ -1227,7 +1227,7 @@ class TestTheUndecidableBlockShowsTheEvidence:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
@@ -1248,7 +1248,7 @@ class TestTheUndecidableBlockShowsTheEvidence:
         result = _run("--state-file", str(state))
 
         assert result.exit_code == 0, result.output
-        body = _entry_lines(result.output, "logly_ads_context")
+        body = _entry_lines(result.output, "acme_ads_context")
         assert any("the access token expired" in line for line in body), body
 
     def test_the_command_that_records_the_decision_still_follows(
@@ -1282,7 +1282,7 @@ class TestUntrustedText:
             {
                 "version": "2",
                 "platforms": {
-                    "logly\x1b[2Jads": {
+                    "acme\x1b[2Jads": {
                         "account_id": "1\x07",
                         "totals": {"fetched_at": "2026\rlater"},
                     }

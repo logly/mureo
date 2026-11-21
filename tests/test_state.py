@@ -434,7 +434,7 @@ class TestStateFileErrorHandling:
                 {"campaign_id": "ok", "campaign_name": "Good", "status": "ENABLED"},
             ],
             "platforms": {
-                "logly_ads_context": {
+                "acme_ads_context": {
                     "account_id": "acct-1",
                     "campaigns": [
                         {"campaign_id": "72804", "name": "E2E", "status": "paused"},
@@ -451,7 +451,7 @@ class TestStateFileErrorHandling:
         assert [c.campaign_id for c in doc.campaigns] == ["", "ok"]
         # The platform's nonconforming campaign is kept, the platform too.
         assert doc.platforms is not None
-        plat = doc.platforms["logly_ads_context"]
+        plat = doc.platforms["acme_ads_context"]
         assert [(c.campaign_id, c.campaign_name) for c in plat.campaigns] == [
             ("72804", "")
         ]
@@ -2635,11 +2635,11 @@ class TestDuplicateAccountEntryGuard:
         path = self._seed(tmp_path, "meta_ads", "act_1")
         with pytest.raises(ValueError) as exc:
             set_platform_metrics(
-                path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 2.0}
+                path, "plugin:mureo-acme-bridge", "act_1", totals={"spend": 2.0}
             )
         message = str(exc.value)
         # Names BOTH keys and the account so the operator can repair it.
-        assert "plugin:mureo-logly-bridge" in message
+        assert "plugin:mureo-acme-bridge" in message
         assert "meta_ads" in message
         assert "act_1" in message
         # Fail-before-write: no second entry landed.
@@ -2661,12 +2661,12 @@ class TestDuplicateAccountEntryGuard:
             path,
             StateDocument(
                 version="2",
-                platforms={"mureo-logly-bridge": PlatformState(account_id="act_1")},
+                platforms={"mureo-acme-bridge": PlatformState(account_id="act_1")},
             ),
         )
-        with pytest.raises(ValueError, match="mureo-logly-bridge"):
+        with pytest.raises(ValueError, match="mureo-acme-bridge"):
             set_platform_metrics(
-                path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 2.0}
+                path, "plugin:mureo-acme-bridge", "act_1", totals={"spend": 2.0}
             )
 
     def test_act_prefix_variants_are_the_same_account(self, tmp_path: Path) -> None:
@@ -2685,7 +2685,7 @@ class TestDuplicateAccountEntryGuard:
                     "version": "2",
                     "platforms": {
                         "meta_ads": {"account_id": "act_1", "campaigns": []},
-                        "plugin:mureo-logly-bridge": {
+                        "plugin:mureo-acme-bridge": {
                             "account_id": "act_1",
                             "campaigns": [],
                         },
@@ -2697,11 +2697,11 @@ class TestDuplicateAccountEntryGuard:
         doc = set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 9.0})
         assert doc.platforms["meta_ads"].totals["spend"] == 9.0
         doc = set_platform_metrics(
-            path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 8.0}
+            path, "plugin:mureo-acme-bridge", "act_1", totals={"spend": 8.0}
         )
-        assert doc.platforms["plugin:mureo-logly-bridge"].totals["spend"] == 8.0
+        assert doc.platforms["plugin:mureo-acme-bridge"].totals["spend"] == 8.0
         # Neither entry was deleted or merged — repair is the operator's call.
-        assert set(doc.platforms) == {"meta_ads", "plugin:mureo-logly-bridge"}
+        assert set(doc.platforms) == {"meta_ads", "plugin:mureo-acme-bridge"}
 
     def test_different_accounts_under_different_keys_are_fine(
         self, tmp_path: Path
@@ -2756,7 +2756,7 @@ class TestDuplicateAccountEntryGuard:
         set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 2.0})
         with pytest.raises(ValueError, match="already stored under"):
             set_platform_metrics(
-                path, "plugin:mureo-logly-bridge", "1", totals={"spend": 3.0}
+                path, "plugin:mureo-acme-bridge", "1", totals={"spend": 3.0}
             )
 
     def test_upsert_campaign_shares_the_guard(self, tmp_path: Path) -> None:
@@ -2766,7 +2766,7 @@ class TestDuplicateAccountEntryGuard:
             upsert_campaign(
                 path,
                 CampaignSnapshot(campaign_id="c1", campaign_name="C1", status="ACTIVE"),
-                platform="plugin:mureo-logly-bridge",
+                platform="plugin:mureo-acme-bridge",
                 account_id="act_1",
             )
         assert set(read_state_file(path).platforms) == {"meta_ads"}
@@ -2777,7 +2777,7 @@ class TestDuplicateAccountEntryGuard:
         path = self._seed(tmp_path, "meta_ads", "act_1")
         with pytest.raises(ValueError, match="meta_ads"):
             set_conversion_action_types(
-                path, "plugin:mureo-logly-bridge", "act_1", ["lead"]
+                path, "plugin:mureo-acme-bridge", "act_1", ["lead"]
             )
         assert set(read_state_file(path).platforms) == {"meta_ads"}
 
@@ -2787,7 +2787,7 @@ class TestDuplicateAccountEntryGuard:
         while naming no provider (``"plugin:<dist>:"``, #537), are not
         usable keys."""
         path = tmp_path / "STATE.json"
-        for bad in ("", "   ", "plugin:", "plugin:mureo-logly-bridge:"):
+        for bad in ("", "   ", "plugin:", "plugin:mureo-acme-bridge:"):
             with pytest.raises(ValueError, match="platform"):
                 set_platform_metrics(path, bad, "act_1", totals={"spend": 1.0})
         assert not path.exists()
@@ -2796,9 +2796,9 @@ class TestDuplicateAccountEntryGuard:
         """The write path never rewrites the key the operator passed."""
         path = tmp_path / "STATE.json"
         doc = set_platform_metrics(
-            path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 1.0}
+            path, "plugin:mureo-acme-bridge", "act_1", totals={"spend": 1.0}
         )
-        assert set(doc.platforms) == {"plugin:mureo-logly-bridge"}
+        assert set(doc.platforms) == {"plugin:mureo-acme-bridge"}
 
     def test_the_per_provider_key_is_accepted_and_written_verbatim(
         self, tmp_path: Path
@@ -2839,12 +2839,12 @@ class TestDuplicateAccountEntryGuard:
         """
         path = tmp_path / "STATE.json"
         set_platform_metrics(
-            path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 1.0}
+            path, "plugin:mureo-acme-bridge", "act_1", totals={"spend": 1.0}
         )
-        with pytest.raises(ValueError, match="plugin:mureo-logly-bridge"):
+        with pytest.raises(ValueError, match="plugin:mureo-acme-bridge"):
             set_platform_metrics(
                 path,
-                "plugin:mureo-logly-bridge:logly_ads_context",
+                "plugin:mureo-acme-bridge:acme_ads_context",
                 "act_1",
                 totals={"spend": 1.0},
             )
@@ -3035,8 +3035,8 @@ class TestDuplicateAccountEntryGuard:
 def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> None:
     """Pin which plugin platforms the environment reports as installed.
 
-    Every test below pins this. The developer machine that reported #609 has
-    real bridges installed (``logly_ads_context``, ``yahoo_ads``, …), so a test
+    Every test below pins this. A developer machine may have real bridges
+    installed (``acme_ads_context``, ``yahoo_ads``, …), so a test
     that leaned on the ambient environment would pass for a reason it did not
     assert — and would flip on a machine with no plugins.
     """
@@ -3048,9 +3048,9 @@ def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> No
 class TestUnknownPlatformKeyGuard:
     """#609 — an agent can no longer invent a platform key mureo then stores.
 
-    The observed failure: an agent wrote LOGLY snapshots under ``logly_ads``
-    while the bridge's provider is ``logly_ads_context``. Both keys carried the
-    same ad account, so the reporting view summed them.
+    The failure this stops: an agent writes ACME snapshots under ``acme_ads``
+    while the bridge's provider is ``acme_ads_context``. Both keys carry the
+    same ad account, so the reporting view sums them.
 
     Refusing is create-only, exactly like every other key check here: a
     document that ALREADY carries a bad key has to stay writable or the
@@ -3062,15 +3062,15 @@ class TestUnknownPlatformKeyGuard:
     ) -> None:
         """And the message names the key plus what WOULD have been accepted,
         so the agent's next attempt is correct rather than a second guess."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         with pytest.raises(ValueError) as exc:
-            set_platform_metrics(path, "logly_ads", "act_1", totals={"spend": 1.0})
+            set_platform_metrics(path, "acme_ads", "act_1", totals={"spend": 1.0})
         message = str(exc.value)
-        assert "logly_ads" in message
+        assert "acme_ads" in message
         # The three accepted vocabularies are all named.
         assert "google_ads" in message  # a built-in
-        assert "logly_ads_context" in message  # an installed provider
+        assert "acme_ads_context" in message  # an installed provider
         assert "plugin:" in message  # the canonical plugin key form
         # Fail-before-write: nothing landed.
         assert not path.exists()
@@ -3078,26 +3078,26 @@ class TestUnknownPlatformKeyGuard:
     def test_an_installed_providers_name_is_accepted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         doc = set_platform_metrics(
-            path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+            path, "acme_ads_context", "act_1", totals={"spend": 1.0}
         )
-        assert set(doc.platforms) == {"logly_ads_context"}
+        assert set(doc.platforms) == {"acme_ads_context"}
 
-    def test_the_logly_incident(
+    def test_the_acme_incident(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The reported case, pinned end to end: the invented key is refused,
+        """The invented-key case, pinned end to end: the invented key is refused,
         the real provider name is accepted, and one account keeps one key."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
-        with pytest.raises(ValueError, match="logly_ads"):
-            set_platform_metrics(path, "logly_ads", "act_1", totals={"spend": 1.0})
+        with pytest.raises(ValueError, match="acme_ads"):
+            set_platform_metrics(path, "acme_ads", "act_1", totals={"spend": 1.0})
         doc = set_platform_metrics(
-            path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+            path, "acme_ads_context", "act_1", totals={"spend": 1.0}
         )
-        assert set(doc.platforms) == {"logly_ads_context"}
+        assert set(doc.platforms) == {"acme_ads_context"}
 
     def test_a_builtin_is_accepted_with_no_plugin_installed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -3121,9 +3121,9 @@ class TestUnknownPlatformKeyGuard:
         name that IS installed on the reporting machine is refused."""
         _pin_installed_platforms(monkeypatch)
         path = tmp_path / "STATE.json"
-        with pytest.raises(ValueError, match="logly_ads_context"):
+        with pytest.raises(ValueError, match="acme_ads_context"):
             set_platform_metrics(
-                path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+                path, "acme_ads_context", "act_1", totals={"spend": 1.0}
             )
 
     def test_a_canonical_plugin_key_is_accepted_when_nothing_is_installed(
@@ -3136,57 +3136,57 @@ class TestUnknownPlatformKeyGuard:
         path = tmp_path / "STATE.json"
         doc = set_platform_metrics(
             path,
-            "plugin:mureo-logly-bridge:logly_ads_context",
+            "plugin:mureo-acme-bridge:acme_ads_context",
             "act_1",
             totals={"spend": 1.0},
         )
-        assert set(doc.platforms) == {"plugin:mureo-logly-bridge:logly_ads_context"}
+        assert set(doc.platforms) == {"plugin:mureo-acme-bridge:acme_ads_context"}
 
     def test_uninstalling_a_provider_does_not_strand_its_entries(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Create-only means an existing entry keeps taking writes after its
         bridge is uninstalled — otherwise `pip uninstall` freezes the state."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
-        set_platform_metrics(path, "logly_ads_context", "act_1", totals={"spend": 1.0})
+        set_platform_metrics(path, "acme_ads_context", "act_1", totals={"spend": 1.0})
         _pin_installed_platforms(monkeypatch)
         doc = set_platform_metrics(
-            path, "logly_ads_context", "act_1", totals={"spend": 2.0}
+            path, "acme_ads_context", "act_1", totals={"spend": 2.0}
         )
-        assert doc.platforms["logly_ads_context"].totals["spend"] == 2.0
+        assert doc.platforms["acme_ads_context"].totals["spend"] == 2.0
 
     def test_an_existing_unknown_key_stays_writable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The repair path: the operator holding the bad key must be able to
         keep syncing it (and to re-point it) while they decide what to do."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         path.write_text(
             json.dumps(
-                {"version": "2", "platforms": {"logly_ads": {"account_id": "act_1"}}}
+                {"version": "2", "platforms": {"acme_ads": {"account_id": "act_1"}}}
             ),
             encoding="utf-8",
         )
-        doc = set_platform_metrics(path, "logly_ads", "act_1", totals={"spend": 1.0})
-        assert doc.platforms["logly_ads"].totals["spend"] == 1.0
+        doc = set_platform_metrics(path, "acme_ads", "act_1", totals={"spend": 1.0})
+        assert doc.platforms["acme_ads"].totals["spend"] == 1.0
 
     def test_a_whole_document_write_carrying_an_unknown_key_still_lands(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Detection, not enforcement, on the whole-document funnel — a
         restore / import / digest sync must never be blocked by this check."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         write_state_file(
             path,
             StateDocument(
                 version="2",
-                platforms={"logly_ads": PlatformState(account_id="act_1")},
+                platforms={"acme_ads": PlatformState(account_id="act_1")},
             ),
         )
-        assert set(read_state_file(path).platforms) == {"logly_ads"}
+        assert set(read_state_file(path).platforms) == {"acme_ads"}
 
     def test_an_unreadable_plugin_environment_fails_open(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -3204,21 +3204,21 @@ class TestUnknownPlatformKeyGuard:
             caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"),
         ):
             doc = set_platform_metrics(
-                path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+                path, "acme_ads_context", "act_1", totals={"spend": 1.0}
             )
-        assert set(doc.platforms) == {"logly_ads_context"}
+        assert set(doc.platforms) == {"acme_ads_context"}
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
     def test_upsert_campaign_shares_the_guard(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
-        with pytest.raises(ValueError, match="logly_ads"):
+        with pytest.raises(ValueError, match="acme_ads"):
             upsert_campaign(
                 path,
                 CampaignSnapshot(campaign_id="c1", campaign_name="C1", status="ACTIVE"),
-                platform="logly_ads",
+                platform="acme_ads",
                 account_id="act_1",
             )
         assert not path.exists()
@@ -3228,10 +3228,10 @@ class TestUnknownPlatformKeyGuard:
     ) -> None:
         from mureo.context.state import set_conversion_action_types
 
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
-        with pytest.raises(ValueError, match="logly_ads"):
-            set_conversion_action_types(path, "logly_ads", "act_1", ["lead"])
+        with pytest.raises(ValueError, match="acme_ads"):
+            set_conversion_action_types(path, "acme_ads", "act_1", ["lead"])
         assert not path.exists()
 
 
@@ -3257,7 +3257,7 @@ class TestWholeDocumentDuplicateWarning:
             version="2",
             platforms={
                 "meta_ads": PlatformState(account_id="act_1"),
-                "plugin:mureo-logly-bridge": PlatformState(account_id="1"),
+                "plugin:mureo-acme-bridge": PlatformState(account_id="1"),
             },
         )
 
@@ -3273,7 +3273,7 @@ class TestWholeDocumentDuplicateWarning:
         (record,) = [r for r in caplog.records if r.levelno == logging.WARNING]
         message = record.getMessage()
         assert "meta_ads" in message
-        assert "plugin:mureo-logly-bridge" in message
+        assert "plugin:mureo-acme-bridge" in message
         assert "act_1" in message
 
     def test_the_write_still_happens(self, tmp_path: Path) -> None:
@@ -3282,7 +3282,7 @@ class TestWholeDocumentDuplicateWarning:
         write_state_file(path, self._duplicated_doc())
         assert set(read_state_file(path).platforms) == {
             "meta_ads",
-            "plugin:mureo-logly-bridge",
+            "plugin:mureo-acme-bridge",
         }
 
     def test_warns_once_per_process_per_group(
@@ -3372,7 +3372,7 @@ class TestWholeDocumentDuplicateWarning:
         assert [r for r in caplog.records if r.levelno == logging.WARNING]
         assert set(store.read_state().platforms) == {
             "meta_ads",
-            "plugin:mureo-logly-bridge",
+            "plugin:mureo-acme-bridge",
         }
 
 

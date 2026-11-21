@@ -4,7 +4,7 @@ The OSS surface is intentionally tiny: a PolicyGate Protocol, a
 PolicyDecision dataclass, and the dispatcher integration that
 consults gates registered via the ``mureo.policy_gates`` entry-point
 group. mureo OSS itself ships zero gates — third-party packages
-(e.g. mureo-agency) supply the policy logic. These tests pin:
+(e.g. a multi-account backend) supply the policy logic. These tests pin:
 
 1. The Protocol + dataclass shape are stable.
 2. The dispatcher consults gates AFTER name resolution but BEFORE

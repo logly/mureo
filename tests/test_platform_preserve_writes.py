@@ -94,7 +94,7 @@ def _no_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
 #: ``(platform key, the on-disk entry, the account id the writer passes)``.
 _OBSERVED = [
     pytest.param("google_ads", _STRING_CAMPAIGNS, "111-222-3333", id="string"),
-    pytest.param("logly_ads", _NO_ACCOUNT_ID, "555", id="no-account_id"),
+    pytest.param("acme_ads", _NO_ACCOUNT_ID, "555", id="no-account_id"),
 ]
 
 
@@ -169,7 +169,7 @@ class TestTargetedWritersKeepTheRest:
 
 
 def _mixed(*campaigns: Any) -> dict[str, Any]:
-    return {"logly_ads": {"account_id": "1", "campaigns": list(campaigns)}}
+    return {"acme_ads": {"account_id": "1", "campaigns": list(campaigns)}}
 
 
 class TestMixedListsKeepTheirNonObjects:
@@ -186,11 +186,11 @@ class TestMixedListsKeepTheirNonObjects:
         upsert_campaign(
             path,
             CampaignSnapshot(campaign_id="c3", campaign_name="C", status="ENABLED"),
-            platform="logly_ads",
+            platform="acme_ads",
             account_id="1",
         )
 
-        stored = _on_disk(path)["platforms"]["logly_ads"]["campaigns"]
+        stored = _on_disk(path)["platforms"]["acme_ads"]["campaigns"]
         assert [c if isinstance(c, str) else c["campaign_id"] for c in stored] == [
             "c1",
             "paused the rest",
@@ -206,11 +206,11 @@ class TestMixedListsKeepTheirNonObjects:
         upsert_campaign(
             path,
             CampaignSnapshot(campaign_id="c1", campaign_name="A", status="PAUSED"),
-            platform="logly_ads",
+            platform="acme_ads",
             account_id="1",
         )
 
-        stored = _on_disk(path)["platforms"]["logly_ads"]["campaigns"]
+        stored = _on_disk(path)["platforms"]["acme_ads"]["campaigns"]
         assert stored[0] == "see sheet"
         assert stored[1]["status"] == "PAUSED"
         assert stored[2] == 7
@@ -221,11 +221,11 @@ class TestMixedListsKeepTheirNonObjects:
         )
         doc = parse_state(text)
         assert doc.platforms is not None
-        emptied = dataclasses.replace(doc.platforms["logly_ads"], campaigns=())
-        changed = dataclasses.replace(doc, platforms={"logly_ads": emptied})
+        emptied = dataclasses.replace(doc.platforms["acme_ads"], campaigns=())
+        changed = dataclasses.replace(doc, platforms={"acme_ads": emptied})
 
         stored = json.loads(render_state(changed))
-        assert stored["platforms"]["logly_ads"]["campaigns"] == ["a", "b", "c"]
+        assert stored["platforms"]["acme_ads"]["campaigns"] == ["a", "b", "c"]
 
     def test_replaced_ads_keep_the_non_objects(self, tmp_path: Path) -> None:
         path = _write_platforms(
@@ -241,11 +241,11 @@ class TestMixedListsKeepTheirNonObjects:
                 status="ENABLED",
                 ads=(AdState(ad_id="a1", status="PAUSED"), AdState(ad_id="a2")),
             ),
-            platform="logly_ads",
+            platform="acme_ads",
             account_id="1",
         )
 
-        stored = _on_disk(path)["platforms"]["logly_ads"]["campaigns"][0]["ads"]
+        stored = _on_disk(path)["platforms"]["acme_ads"]["campaigns"][0]["ads"]
         assert stored == [{"ad_id": "a1", "status": "PAUSED"}, 42, {"ad_id": "a2"}]
 
 
@@ -257,28 +257,28 @@ class TestMixedListsKeepTheirNonObjects:
 class TestAbsentCampaignsStaysAbsent:
     def test_a_metrics_write_adds_no_campaigns_key(self, tmp_path: Path) -> None:
         path = _write_platforms(
-            tmp_path, {"logly_ads": {"account_id": "1", "owner": "ops team"}}
+            tmp_path, {"acme_ads": {"account_id": "1", "owner": "ops team"}}
         )
 
-        set_platform_metrics(path, "logly_ads", "1", metrics_period="YESTERDAY")
+        set_platform_metrics(path, "acme_ads", "1", metrics_period="YESTERDAY")
 
-        stored = _on_disk(path)["platforms"]["logly_ads"]
+        stored = _on_disk(path)["platforms"]["acme_ads"]
         assert "campaigns" not in stored
         assert stored["owner"] == "ops team"
 
     def test_an_upsert_adds_it(self, tmp_path: Path) -> None:
         path = _write_platforms(
-            tmp_path, {"logly_ads": {"account_id": "1", "owner": "ops team"}}
+            tmp_path, {"acme_ads": {"account_id": "1", "owner": "ops team"}}
         )
 
         upsert_campaign(
             path,
             CampaignSnapshot(campaign_id="c1", campaign_name="A", status="ENABLED"),
-            platform="logly_ads",
+            platform="acme_ads",
             account_id="1",
         )
 
-        stored = _on_disk(path)["platforms"]["logly_ads"]
+        stored = _on_disk(path)["platforms"]["acme_ads"]
         assert [c["campaign_id"] for c in stored["campaigns"]] == ["c1"]
 
 

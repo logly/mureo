@@ -457,8 +457,8 @@ class TestSurfaceRegistry:
         try:
             register_exclusion_surface(
                 ExclusionSurface(
-                    tool="logly_ads_block_adspots",
-                    platform="logly",
+                    tool="acme_ads_block_adspots",
+                    platform="acme",
                     targets=lambda args: (
                         ExclusionTarget(str(a), "adspot")
                         for a in args.get("adspots", [])
@@ -466,7 +466,7 @@ class TestSurfaceRegistry:
                     delivery=_delivery,
                 )
             )
-            assert exclusion_surface_for("logly_ads_block_adspots") is not None
+            assert exclusion_surface_for("acme_ads_block_adspots") is not None
         finally:
             reset_exclusion_surfaces()
             register_builtin = __import__(

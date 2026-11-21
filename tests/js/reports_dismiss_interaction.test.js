@@ -44,7 +44,7 @@ function unknownKeySummary() {
       },
     ],
     platform_conflicts: [
-      { kind: "unrecognized_key", platform_keys: ["logly_ads_context"], account_known: false },
+      { kind: "unrecognized_key", platform_keys: ["acme_ads_context"], account_known: false },
     ],
     recent_actions: [],
     reports: null,

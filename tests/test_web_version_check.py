@@ -98,18 +98,20 @@ class TestCheckForUpdates:
         with (
             patch(
                 "mureo.web.version_check._installed_mureo_versions",
-                return_value={"mureo-agency": "0.1.0"},
+                return_value={"mureo-acme-backend": "0.1.0"},
             ),
             patch(
                 "mureo.web.version_check._run_pip_report",
-                return_value=_report({"name": "mureo-agency", "version": "0.2.0"}),
+                return_value=_report(
+                    {"name": "mureo-acme-backend", "version": "0.2.0"}
+                ),
             ),
         ):
             result = check_for_updates()
         assert result["status"] == "ok"
         assert result["any_update"] is True
         assert result["packages"] == [
-            {"name": "mureo-agency", "installed": "0.1.0", "latest": "0.2.0"}
+            {"name": "mureo-acme-backend", "installed": "0.1.0", "latest": "0.2.0"}
         ]
 
     def test_scopes_query_to_installed_mureo_packages(self) -> None:
@@ -124,26 +126,26 @@ class TestCheckForUpdates:
         with (
             patch(
                 "mureo.web.version_check._installed_mureo_versions",
-                return_value={"mureo-agency": "0.1.0", "mureo": "0.10.0"},
+                return_value={"mureo-acme-backend": "0.1.0", "mureo": "0.10.0"},
             ),
             patch("mureo.web.version_check._run_pip_report", side_effect=_capture),
         ):
             check_for_updates()
-        assert captured["packages"] == ["mureo", "mureo-agency"]
+        assert captured["packages"] == ["mureo", "mureo-acme-backend"]
 
     def test_filters_out_non_mureo_packages(self) -> None:
         """Report entries that are not mureo / mureo-* are dropped."""
         with (
             patch(
                 "mureo.web.version_check._installed_mureo_versions",
-                return_value={"mureo-logly-bridge": "0.3.0"},
+                return_value={"mureo-acme-bridge": "0.3.0"},
             ),
             patch(
                 "mureo.web.version_check._run_pip_report",
                 return_value=_report(
                     {"name": "requests", "version": "2.31.0"},
                     {"name": "mureology", "version": "2.0.0"},  # prefix squatter
-                    {"name": "mureo-logly-bridge", "version": "0.4.0"},
+                    {"name": "mureo-acme-bridge", "version": "0.4.0"},
                 ),
             ),
         ):
@@ -151,7 +153,7 @@ class TestCheckForUpdates:
         assert result["status"] == "ok"
         assert result["any_update"] is True
         names = [pkg["name"] for pkg in result["packages"]]
-        assert names == ["mureo-logly-bridge"]
+        assert names == ["mureo-acme-bridge"]
 
     def test_mureo_itself_outdated_is_included(self) -> None:
         """The ``mureo`` core distribution is included when outdated."""
@@ -212,22 +214,25 @@ class TestCheckForUpdates:
         report = {
             "version": "1",
             "install": [
-                {"metadata": {"name": "mureo-agency"}},  # no version
+                {"metadata": {"name": "mureo-acme-backend"}},  # no version
                 {"foo": "bar"},  # no metadata at all
-                {"metadata": {"name": "mureo-logly-bridge", "version": "0.4.0"}},
+                {"metadata": {"name": "mureo-acme-bridge", "version": "0.4.0"}},
             ],
         }
         with (
             patch(
                 "mureo.web.version_check._installed_mureo_versions",
-                return_value={"mureo-agency": "0.1.0", "mureo-logly-bridge": "0.3.0"},
+                return_value={
+                    "mureo-acme-backend": "0.1.0",
+                    "mureo-acme-bridge": "0.3.0",
+                },
             ),
             patch("mureo.web.version_check._run_pip_report", return_value=report),
         ):
             result = check_for_updates()
         assert result["status"] == "ok"
         names = [pkg["name"] for pkg in result["packages"]]
-        assert names == ["mureo-logly-bridge"]
+        assert names == ["mureo-acme-bridge"]
 
     def test_constraint_pinned_downgrade_is_not_an_update(self) -> None:
         """``--upgrade`` can list a DOWNGRADE target when a pip constraint pins
@@ -252,12 +257,12 @@ class TestCheckForUpdates:
         with (
             patch(
                 "mureo.web.version_check._installed_mureo_versions",
-                return_value={"mureo-agency": "0.1.0"},
+                return_value={"mureo-acme-backend": "0.1.0"},
             ),
             patch(
                 "mureo.web.version_check._run_pip_report",
                 return_value=_report(
-                    {"name": "mureo-agency", "version": "not-a-version"}
+                    {"name": "mureo-acme-backend", "version": "not-a-version"}
                 ),
             ),
         ):
@@ -286,7 +291,7 @@ class TestRunPipReport:
             "mureo.web.version_check.subprocess.run",
             return_value=_completed(stdout='{"install": []}'),
         ) as mock_run:
-            version_check._run_pip_report(["mureo", "mureo-agency"])
+            version_check._run_pip_report(["mureo", "mureo-acme-backend"])
         args, kwargs = mock_run.call_args
         cmd = args[0]
         assert cmd[1:10] == [
@@ -301,7 +306,7 @@ class TestRunPipReport:
             "-",
         ]
         # Packages follow the ``--`` sentinel so a name can never be read as a flag.
-        assert cmd[-3:] == ["--", "mureo", "mureo-agency"]
+        assert cmd[-3:] == ["--", "mureo", "mureo-acme-backend"]
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
         assert kwargs["check"] is False

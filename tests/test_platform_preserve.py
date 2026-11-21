@@ -74,7 +74,7 @@ def _document() -> dict[str, Any]:
         "campaigns": [],
         "platforms": {
             "google_ads": _STRING_CAMPAIGNS,
-            "logly_ads": _NO_ACCOUNT_ID,
+            "acme_ads": _NO_ACCOUNT_ID,
         },
         "action_log": [],
     }
@@ -107,10 +107,10 @@ def _assert_observed_shapes_kept(path: Path) -> None:
     platforms = _on_disk(path)["platforms"]
     assert platforms["google_ads"] == _STRING_CAMPAIGNS
     assert platforms["google_ads"]["campaigns"] == "see the weekly sheet"
-    assert platforms["logly_ads"] == _NO_ACCOUNT_ID
-    assert "account_id" not in platforms["logly_ads"]
-    assert list(platforms["logly_ads"]) == list(_NO_ACCOUNT_ID), "key order changed"
-    assert list(platforms["logly_ads"]["campaigns"][0]) == list(_HAND_CAMPAIGN)
+    assert platforms["acme_ads"] == _NO_ACCOUNT_ID
+    assert "account_id" not in platforms["acme_ads"]
+    assert list(platforms["acme_ads"]) == list(_NO_ACCOUNT_ID), "key order changed"
+    assert list(platforms["acme_ads"]["campaigns"][0]) == list(_HAND_CAMPAIGN)
 
 
 def _campaign(**extra: Any) -> dict[str, Any]:
@@ -192,13 +192,13 @@ class TestObservedShapesDoNotBlockWrites:
             "campaigns": "see the weekly sheet",
             "totals": None,
         }
-        assert doc.platforms["logly_ads"].account_id == ""
-        assert doc.platforms["logly_ads"].raw == {
+        assert doc.platforms["acme_ads"].account_id == ""
+        assert doc.platforms["acme_ads"].raw == {
             "campaigns": [],
             "metrics_period": None,
             "owner": "ops team",
         }
-        campaign = doc.platforms["logly_ads"].campaigns[0]
+        campaign = doc.platforms["acme_ads"].campaigns[0]
         assert (campaign.campaign_id, campaign.campaign_name, campaign.status) == (
             "72804",
             "",
@@ -386,11 +386,11 @@ class TestMureoChangesLand:
             CampaignSnapshot(
                 campaign_id="72804", campaign_name="E2E", status="ENABLED"
             ),
-            platform="logly_ads",
+            platform="acme_ads",
             account_id="555",
         )
 
-        platform = _on_disk(state_file)["platforms"]["logly_ads"]
+        platform = _on_disk(state_file)["platforms"]["acme_ads"]
         stored = platform["campaigns"]
         assert len(stored) == 1
         assert stored[0]["status"] == "ENABLED"
@@ -454,7 +454,7 @@ class TestMureoChangesLand:
         path = tmp_path / "STATE.json"
         path.write_text(
             _with_platforms(
-                {"logly_ads": {"account_id": "1", "campaigns": [{"name": "x"}]}}
+                {"acme_ads": {"account_id": "1", "campaigns": [{"name": "x"}]}}
             ),
             encoding="utf-8",
         )
@@ -462,11 +462,11 @@ class TestMureoChangesLand:
         upsert_campaign(
             path,
             CampaignSnapshot(campaign_id="c9", campaign_name="N", status="ENABLED"),
-            platform="logly_ads",
+            platform="acme_ads",
             account_id="1",
         )
 
-        stored = _on_disk(path)["platforms"]["logly_ads"]["campaigns"]
+        stored = _on_disk(path)["platforms"]["acme_ads"]["campaigns"]
         assert stored[0] == {"name": "x"}
         assert stored[1]["campaign_id"] == "c9"
 
@@ -479,7 +479,7 @@ class TestUnknownAccountIds:
         text = _with_platforms(
             {
                 "google_ads": {"campaigns": [], "totals": {"spend": 1.0}},
-                "logly_ads": {"campaigns": [], "totals": {"spend": 2.0}},
+                "acme_ads": {"campaigns": [], "totals": {"spend": 2.0}},
             }
         )
         doc = parse_state(text)

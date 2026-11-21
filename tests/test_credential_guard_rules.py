@@ -227,7 +227,7 @@ class TestBashGuardBehavior:
             "node --test tests/js/reports_format.test.js # window.MUREO_AUTH_META",
             # Hostnames under the project's domain, case-folding to `.mureo.`.
             "gh pr create --body 'published to pkgs.mureo.jp'",
-            "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-agency",
+            "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-acme-backend",
             "curl -sS https://pkgs.mureo.jp/simple/index.html",
             "open https://docs.mureo.jp/byod",
             "echo www.mureo.jp",

@@ -2,7 +2,7 @@
 
 This is the single source of the rule for THREE consumers — the STATE.json
 write guards, the read-only Reports view that surfaces an existing conflict,
-and out-of-tree writers (mureo-agency) that assemble a whole ``StateDocument``
+and out-of-tree writers (a multi-account backend) that assemble a whole ``StateDocument``
 themselves. Reimplementing the join in any of them would let it drift, and
 drift here re-creates the double-counting bug, so its public surface is pinned
 here.
@@ -66,10 +66,10 @@ def test_an_unknown_id_never_matches_anything_including_another_unknown() -> Non
 
 def test_platform_keys_for_account_finds_every_key_in_document_order() -> None:
     platforms = _platforms(meta_ads="act_1", google_ads="999")
-    platforms["plugin:mureo-logly-bridge"] = PlatformState(account_id="1")
+    platforms["plugin:mureo-acme-bridge"] = PlatformState(account_id="1")
     assert platform_keys_for_account(platforms, "act_1") == (
         "meta_ads",
-        "plugin:mureo-logly-bridge",
+        "plugin:mureo-acme-bridge",
     )
 
 
@@ -96,12 +96,12 @@ def test_no_duplicates_yields_nothing() -> None:
 
 def test_two_keys_for_one_account_are_grouped() -> None:
     platforms = _platforms(meta_ads="act_1")
-    platforms["plugin:mureo-logly-bridge"] = PlatformState(account_id="1")
+    platforms["plugin:mureo-acme-bridge"] = PlatformState(account_id="1")
     groups = duplicate_account_entries(platforms)
     assert groups == (
         DuplicateAccountEntry(
             account_id="act_1",
-            platform_keys=("meta_ads", "plugin:mureo-logly-bridge"),
+            platform_keys=("meta_ads", "plugin:mureo-acme-bridge"),
         ),
     )
     # The reported account_id is the one AS STORED on the first key, so an
@@ -137,7 +137,7 @@ def test_a_non_string_id_is_folded_textually_not_raised_on() -> None:
     """A hand-edited ``"account_id": 12345`` (a JSON number) must not blow up
     a detection helper.
 
-    mureo-agency assembles ``PlatformState`` from loosely-typed sources, so a
+    A multi-account backend assembles ``PlatformState`` from loosely-typed sources, so a
     non-``str`` id is a question of when, not if. Coercing textually keeps the
     duplicate DETECTABLE — raising from inside a write guard would surface as
     the wrong exception type from an unrelated call.

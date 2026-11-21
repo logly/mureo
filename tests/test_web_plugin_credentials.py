@@ -1179,7 +1179,7 @@ def test_oauth_block_surfaces_accounts_field_and_lister(
         monkeypatch,
         [
             _entry(
-                "meta_ads_logly",
+                "meta_ads_acme",
                 fields=_broker_fields(),
                 oauth=_broker_oauth(),
                 lister=lambda creds: [{"id": "act_1", "name": "Brand"}],
@@ -1466,7 +1466,7 @@ def test_multi_account_picker_scope_excludes_accounts_field(
     _register(
         monkeypatch,
         [
-            _entry("meta_ads_logly", fields=_broker_fields(), oauth=_broker_oauth()),
+            _entry("meta_ads_acme", fields=_broker_fields(), oauth=_broker_oauth()),
             _entry("yahoo_ads", fields=_yahoo_fields(), oauth=_yahoo_oauth()),
             _entry(
                 "manual", fields=(AccountCredentialField(key="k", display_name="K"),)
@@ -1475,9 +1475,9 @@ def test_multi_account_picker_scope_excludes_accounts_field(
     )
     scope = multi_account_picker_scope()
     # Picker provider: allow-list keeps everything EXCEPT account_id.
-    assert "meta_ads_logly" in scope
-    assert "account_id" not in scope["meta_ads_logly"]
-    assert "client_id" in scope["meta_ads_logly"]
+    assert "meta_ads_acme" in scope
+    assert "account_id" not in scope["meta_ads_acme"]
+    assert "client_id" in scope["meta_ads_acme"]
     # Non-picker providers are absent (all their fields kept).
     assert "yahoo_ads" not in scope
     assert "manual" not in scope

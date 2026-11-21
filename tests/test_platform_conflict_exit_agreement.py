@@ -85,8 +85,8 @@ def _reset_ctx() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The reported machine: the LOGLY bridge installed, nothing else."""
-    entries = (SimpleNamespace(name="logly_ads_context"),)
+    """One installed bridge, ACME's, and nothing else."""
+    entries = (SimpleNamespace(name="acme_ads_context"),)
     monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
 
 
@@ -101,22 +101,22 @@ _DUPLICATE_DOCUMENTS: tuple[tuple[str, dict[str, Any]], ...] = (
     (
         "both keys resolve",  # #636 itself
         {
-            "plugin:mureo-logly-bridge": _entry("1234567890"),
-            "logly_ads_context": _entry("1234567890"),
+            "plugin:mureo-acme-bridge": _entry("1234567890"),
+            "acme_ads_context": _entry("1234567890"),
         },
     ),
     (
         "one key resolves, one does not",  # #610
         {
-            "logly_ads": _entry("1234567890"),
-            "logly_ads_context": _entry("1234567890"),
+            "acme_ads": _entry("1234567890"),
+            "acme_ads_context": _entry("1234567890"),
         },
     ),
     (
         "neither key resolves",
         {
-            "logly_ads": _entry("1234567890"),
-            "logly_adz": _entry("1234567890"),
+            "acme_ads": _entry("1234567890"),
+            "acme_adz": _entry("1234567890"),
         },
     ),
     (
@@ -130,17 +130,17 @@ _DUPLICATE_DOCUMENTS: tuple[tuple[str, dict[str, Any]], ...] = (
         "three keys on one account",
         {
             "google_ads": _entry("1234567890"),
-            "logly_ads_context": _entry("1234567890"),
-            "logly_ads": _entry("1234567890"),
+            "acme_ads_context": _entry("1234567890"),
+            "acme_ads": _entry("1234567890"),
         },
     ),
     (
         "one of the two carries a conversion override",
         {
-            "plugin:mureo-logly-bridge": _entry(
+            "plugin:mureo-acme-bridge": _entry(
                 "1234567890", conversion_action_types=["offsite_conversion.custom.1"]
             ),
-            "logly_ads_context": _entry("1234567890"),
+            "acme_ads_context": _entry("1234567890"),
         },
     ),
 )
@@ -225,10 +225,10 @@ def test_the_one_refusal_with_no_drop_still_states_the_step(_workspace: Path) ->
     exit even here; it just is not a one-command one.
     """
     both = {
-        "plugin:mureo-logly-bridge": _entry(
+        "plugin:mureo-acme-bridge": _entry(
             "1234567890", conversion_action_types=["offsite_conversion.custom.1"]
         ),
-        "logly_ads_context": _entry(
+        "acme_ads_context": _entry(
             "1234567890", conversion_action_types=["offsite_conversion.custom.2"]
         ),
     }
@@ -259,8 +259,8 @@ def test_the_terminal_prints_a_runnable_command_for_the_conflict(
             {
                 "version": "2",
                 "platforms": {
-                    "plugin:mureo-logly-bridge": _entry("1234567890"),
-                    "logly_ads_context": _entry("1234567890"),
+                    "plugin:mureo-acme-bridge": _entry("1234567890"),
+                    "acme_ads_context": _entry("1234567890"),
                 },
             }
         ),

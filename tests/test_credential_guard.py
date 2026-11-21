@@ -361,7 +361,7 @@ class TestGuardThroughARealShell:
             "ls -la \\\n  ~/project",
             # mureo's own identifiers, including inside quotes.
             "gh release create v0.10.44 --notes 'adds window.MUREO_REPORTS_FORMAT'",
-            "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-agency",
+            "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-acme-backend",
             "echo user@pkgs.mureo.jp",
         ],
     )

@@ -18,7 +18,7 @@ Scope decisions:
   would reject valid forward-compatible sub-fields the handler forwards
   wholesale. Only the top-level parameter set is a fixed, handler-owned
   whitelist, so only the top level is closed.
-* **Builtin tools only.** Plugin-provided tools (entry-point plugins, logly
+* **Builtin tools only.** Plugin-provided tools (entry-point plugins, acme
   bridges, etc.) are out of scope — their schemas are owned by the plugin
   author, and ``_tool_validation.LazyToolValidators`` already tolerates a
   permissive plugin schema (and checks it at startup, where the author can see

@@ -1081,14 +1081,14 @@ async def test_platform_metrics_set_rejects_a_duplicate_account(cwd_to_tmp) -> N
         await mod.handle_tool(
             "mureo_state_platform_metrics_set",
             {
-                "platform": "plugin:mureo-logly-bridge",
+                "platform": "plugin:mureo-acme-bridge",
                 "account_id": "act_1",
                 "totals": {"spend": 2.0},
             },
         )
     message = str(exc.value)
     assert "meta_ads" in message
-    assert "plugin:mureo-logly-bridge" in message
+    assert "plugin:mureo-acme-bridge" in message
     assert "act_1" in message
 
 
@@ -1108,21 +1108,21 @@ async def test_platform_metrics_set_rejects_an_invented_platform_key(
     monkeypatch.setattr(
         platform_guards,
         "_provider_entry_points",
-        lambda: (SimpleNamespace(name="logly_ads_context"),),
+        lambda: (SimpleNamespace(name="acme_ads_context"),),
     )
     mod = _import_tools()
     with pytest.raises(ValueError) as exc:
         await mod.handle_tool(
             "mureo_state_platform_metrics_set",
             {
-                "platform": "logly_ads",
+                "platform": "acme_ads",
                 "account_id": "act_1",
                 "totals": {"spend": 1.0},
             },
         )
     message = str(exc.value)
-    assert "logly_ads" in message
-    assert "logly_ads_context" in message
+    assert "acme_ads" in message
+    assert "acme_ads_context" in message
     assert "google_ads" in message
     assert not (cwd_to_tmp / "STATE.json").exists()
 

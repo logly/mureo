@@ -507,7 +507,7 @@ class TestJournalSource:
         _journal(
             workspace,
             _record(family="plugin", source="mureo-lineyahoo-bridge", tool="mcp__a"),
-            _record(family="plugin", source="mureo-logly-bridge", tool="mcp__b"),
+            _record(family="plugin", source="mureo-acme-bridge", tool="mcp__b"),
         )
         section = (await _call({"sources": ["journal"], "platform": _PLUGIN}))[
             "journal"

@@ -79,8 +79,8 @@ def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> No
 
     The read side resolves a bare provider name through the same enumeration
     the write guard uses, so a fixture using one is machine-dependent
-    otherwise: the machine that reported #631 really has the LOGLY and
-    LINE/Yahoo bridges installed. Same pin the #609 / #610 tests use.
+    otherwise: a developer machine may have real bridges installed. Same pin
+    the #609 / #610 tests use.
     """
     entries = tuple(SimpleNamespace(name=name) for name in names)
     monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
@@ -123,7 +123,7 @@ def test_two_keys_for_one_account_are_surfaced_as_one_conflict(
                 "google_ads": PlatformState(
                     account_id="123-456", totals={"spend": 900.0, "conversions": 9}
                 ),
-                "plugin:mureo-logly-bridge": PlatformState(
+                "plugin:mureo-acme-bridge": PlatformState(
                     account_id="act_123-456", totals={"spend": 400.0}
                 ),
             },
@@ -132,11 +132,11 @@ def test_two_keys_for_one_account_are_surfaced_as_one_conflict(
 
     summary = build_report_summary()
     (found,) = _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT)
-    assert found["platform_keys"] == ["google_ads", "plugin:mureo-logly-bridge"]
+    assert found["platform_keys"] == ["google_ads", "plugin:mureo-acme-bridge"]
     # Neither entry was merged away — the operator repairs, mureo reports.
     assert {p["key"] for p in summary["platforms"]} == {
         "google_ads",
-        "plugin:mureo-logly-bridge",
+        "plugin:mureo-acme-bridge",
     }
 
 
@@ -191,10 +191,10 @@ def test_legacy_and_per_provider_key_for_one_account_is_surfaced(
         StateDocument(
             version="2",
             platforms={
-                "plugin:mureo-logly-bridge": PlatformState(
+                "plugin:mureo-acme-bridge": PlatformState(
                     account_id="act_9", totals={"spend": 400.0}
                 ),
-                "plugin:mureo-logly-bridge:logly_ads_context": PlatformState(
+                "plugin:mureo-acme-bridge:acme_ads_context": PlatformState(
                     account_id="9", totals={"spend": 100.0}
                 ),
             },
@@ -204,8 +204,8 @@ def test_legacy_and_per_provider_key_for_one_account_is_surfaced(
     summary = build_report_summary()
     (found,) = _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT)
     assert found["platform_keys"] == [
-        "plugin:mureo-logly-bridge",
-        "plugin:mureo-logly-bridge:logly_ads_context",
+        "plugin:mureo-acme-bridge",
+        "plugin:mureo-acme-bridge:acme_ads_context",
     ]
     assert _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY) == []
     assert len(summary["platforms"]) == 2
@@ -218,7 +218,7 @@ def test_the_reported_field_shape_is_caught_by_the_unrecognised_key_signal(
     """The shape actually reported from the field.
 
     One canonical key with a real id, one key an out-of-tree writer INVENTED
-    (``logly_ads``, for a bridge whose platform is ``logly_ads_context``)
+    (``acme_ads``, for a bridge whose platform is ``acme_ads_context``)
     whose ``account_id`` never resolved (``""``). ``account_ids_match("", "")``
     is ``False`` BY DESIGN, so the duplicate-account join reports nothing here
     — account joining alone does NOT detect the reported bug. The second
@@ -228,7 +228,7 @@ def test_the_reported_field_shape_is_caught_by_the_unrecognised_key_signal(
     installed on the reporting machine and is a key mureo resolves, so an
     unpinned fixture would assert something different there than in CI.
     """
-    _pin_installed_platforms(monkeypatch, "logly_ads_context")
+    _pin_installed_platforms(monkeypatch, "acme_ads_context")
     _use_workspace(monkeypatch, tmp_path)
     _write_state(
         tmp_path,
@@ -238,7 +238,7 @@ def test_the_reported_field_shape_is_caught_by_the_unrecognised_key_signal(
                 "google_ads": PlatformState(
                     account_id="123-456", totals={"spend": 900.0}
                 ),
-                "logly_ads": PlatformState(account_id="", totals={"spend": 400.0}),
+                "acme_ads": PlatformState(account_id="", totals={"spend": 400.0}),
             },
         ),
     )
@@ -246,7 +246,7 @@ def test_the_reported_field_shape_is_caught_by_the_unrecognised_key_signal(
     summary = build_report_summary()
     assert _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT) == []
     (found,) = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
-    assert found["platform_keys"] == ["logly_ads"]
+    assert found["platform_keys"] == ["acme_ads"]
 
 
 @pytest.mark.unit
@@ -261,7 +261,7 @@ def test_a_bare_installed_platform_name_is_not_reported_as_unrecognised(
     names — while ``mureo repair platform-key --all`` reported every client
     clean. The row still renders, now with a label.
     """
-    _pin_installed_platforms(monkeypatch, "logly_ads_context")
+    _pin_installed_platforms(monkeypatch, "acme_ads_context")
     _use_workspace(monkeypatch, tmp_path)
     _write_state(
         tmp_path,
@@ -271,7 +271,7 @@ def test_a_bare_installed_platform_name_is_not_reported_as_unrecognised(
                 "google_ads": PlatformState(
                     account_id="123-456", totals={"spend": 900.0}
                 ),
-                "logly_ads_context": PlatformState(
+                "acme_ads_context": PlatformState(
                     account_id="", totals={"spend": 400.0}
                 ),
             },
@@ -281,7 +281,7 @@ def test_a_bare_installed_platform_name_is_not_reported_as_unrecognised(
     summary = build_report_summary()
     assert summary["platform_conflicts"] == []
     labels = {p["key"]: p["display_name"] for p in summary["platforms"]}
-    assert labels["logly_ads_context"] == "Logly Ads Context (plugin)"
+    assert labels["acme_ads_context"] == "Acme Ads Context (plugin)"
 
 
 @pytest.mark.unit
@@ -302,7 +302,7 @@ def test_the_two_findings_stay_distinct(
             platforms={
                 "google_ads": PlatformState(account_id="1", totals={"spend": 1.0}),
                 "meta_ads": PlatformState(account_id="act_1", totals={"spend": 2.0}),
-                "logly_ads": PlatformState(account_id="", totals={"spend": 3.0}),
+                "acme_ads": PlatformState(account_id="", totals={"spend": 3.0}),
             },
         ),
     )
@@ -314,7 +314,7 @@ def test_the_two_findings_stay_distinct(
     (dup,) = _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT)
     (unknown,) = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
     assert dup["platform_keys"] == ["google_ads", "meta_ads"]
-    assert unknown["platform_keys"] == ["logly_ads"]
+    assert unknown["platform_keys"] == ["acme_ads"]
 
 
 @pytest.mark.unit
@@ -497,7 +497,7 @@ def test_a_legitimate_multi_platform_client_raises_neither_finding(
                 "google_ads": PlatformState(account_id="111", totals={"spend": 1.0}),
                 "meta_ads": PlatformState(account_id="act_222", totals={"spend": 2.0}),
                 "ga4": PlatformState(account_id="333"),
-                "plugin:mureo-logly-bridge": PlatformState(
+                "plugin:mureo-acme-bridge": PlatformState(
                     account_id="444", totals={"spend": 4.0}
                 ),
                 # No account id at all — unknown is not a join key, and the key

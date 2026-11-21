@@ -107,12 +107,12 @@ def _mixed_state() -> StateDocument:
         metrics_period="LAST_7_DAYS",
     )
     # A plugin/bridge platform WITH metrics.
-    logly = PlatformState(
-        account_id="logly-acct-1",
+    acme = PlatformState(
+        account_id="acme-acct-1",
         campaigns=(
             CampaignSnapshot(
                 campaign_id="l1",
-                campaign_name="Logly Native",
+                campaign_name="Acme Native",
                 status="RUNNING",
                 metrics={"spend": 250.0, "impressions": 4000},
             ),
@@ -128,7 +128,7 @@ def _mixed_state() -> StateDocument:
         platforms={
             "google_ads": google,
             "meta_ads": meta,
-            "plugin:mureo-logly-bridge": logly,
+            "plugin:mureo-acme-bridge": acme,
             "plugin:acme-ads": advisory,
         },
         action_log=(
@@ -160,13 +160,13 @@ def test_summary_lists_every_platform_with_display_names(
     assert set(by_key) == {
         "google_ads",
         "meta_ads",
-        "plugin:mureo-logly-bridge",
+        "plugin:mureo-acme-bridge",
         "plugin:acme-ads",
     }
     assert by_key["google_ads"]["display_name"] == "Google Ads"
     assert by_key["meta_ads"]["display_name"] == "Meta Ads"
     # plugin:<dist> → humanized label dropping the mureo- prefix.
-    assert by_key["plugin:mureo-logly-bridge"]["display_name"] == "Logly (plugin)"
+    assert by_key["plugin:mureo-acme-bridge"]["display_name"] == "Acme (plugin)"
     assert by_key["plugin:acme-ads"]["display_name"] == "Acme Ads (plugin)"
 
 
@@ -196,7 +196,7 @@ def test_official_bridge_dists_render_without_the_plugin_suffix() -> None:
     # The override is keyed on the real distribution name, not a guess.
     assert AMAZON_SOURCE_DISTRIBUTION in _OFFICIAL_BRIDGE_DISPLAY_NAMES
     # Every other plugin dist is unchanged.
-    assert platform_display_name("plugin:mureo-logly-bridge") == "Logly (plugin)"
+    assert platform_display_name("plugin:mureo-acme-bridge") == "Acme (plugin)"
     assert platform_display_name("plugin:acme-ads") == "Acme Ads (plugin)"
     # …and the per-provider key resolves the same override (#537).
     assert (
@@ -234,7 +234,7 @@ def test_legacy_plugin_key_keeps_the_label_it_already_had() -> None:
     """State written before #537 must not change how it renders."""
     from mureo.web.reports import platform_display_name
 
-    assert platform_display_name("plugin:mureo-logly-bridge") == "Logly (plugin)"
+    assert platform_display_name("plugin:mureo-acme-bridge") == "Acme (plugin)"
     assert (
         platform_display_name("plugin:mureo-lineyahoo-bridge") == "Lineyahoo (plugin)"
     )
@@ -321,7 +321,7 @@ def test_summary_never_leaks_secrets(
     # Per-platform ``account_id`` is never surfaced.
     assert "123-456-7890" not in blob
     assert "act_999" not in blob
-    assert "logly-acct-1" not in blob
+    assert "acme-acct-1" not in blob
 
 
 @pytest.mark.unit
@@ -536,11 +536,11 @@ def test_summary_tolerates_nonconforming_campaign_entries(
     raw = {
         "version": "2",
         "platforms": {
-            "logly_ads_context": {
+            "acme_ads_context": {
                 "account_id": "acct-1",
                 "campaigns": [
                     # Variant shape: no campaign_id / campaign_name.
-                    {"id": "69680", "name": "LOGLY Onemove", "status": "enabled"},
+                    {"id": "69680", "name": "ACME Native", "status": "enabled"},
                 ],
                 "totals": {"spend": 8739.0, "conversions": 0},
                 "metrics_period": "YESTERDAY",
@@ -553,8 +553,8 @@ def test_summary_tolerates_nonconforming_campaign_entries(
     with caplog.at_level(logging.DEBUG):
         summary = build_report_summary()
     by_key = {p["key"]: p for p in summary["platforms"]}
-    assert "logly_ads_context" in by_key, "platform blanked by a bad campaign entry"
-    assert by_key["logly_ads_context"]["totals"] == {"spend": 8739.0, "conversions": 0}
+    assert "acme_ads_context" in by_key, "platform blanked by a bad campaign entry"
+    assert by_key["acme_ads_context"]["totals"] == {"spend": 8739.0, "conversions": 0}
     assert summary["reports"] == {"daily": {"verdict": "Watch", "note": "spend down"}}
     # The strict-fail → tolerant-retry happens on EVERY dashboard poll, so it
     # must not flood the daemon log: nothing at WARNING+ for this handled,

@@ -190,7 +190,7 @@ class TestDeclaredBidExtraction:
         assert "max_cpc_bid_per_ad_group" in (decision.reason or "")
 
     def test_micros_are_converted_for_cpc(self) -> None:
-        """The motivating LOGLY case: ``bid_cap_micros`` in micros, capped by
+        """A plugin bid key in micros (``bid_cap_micros``) is capped by
         ``max_cpc_bid_per_ad_group`` (currency units) after ÷1e6."""
         decl = BidDeclaration(cpc_bid_key="bid_cap_micros", micros=True)
         decision = evaluate_guardrails(
