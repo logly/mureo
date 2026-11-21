@@ -122,11 +122,10 @@ class TestSemantics:
             ("chatgpt_ads_campaigns_create", "campaign"),
             ("chatgpt_ads_ad_groups_create", "ad_group"),
             ("chatgpt_ads_ads_create", "ad"),
-            ("chatgpt_ads_campaigns_archive", "campaign"),
-            ("chatgpt_ads_ad_groups_archive", "ad_group"),
-            # No token of the matcher names an ad on its own ("ads_create" and
-            # "ads_update" do), so an ad archive carries no kind.
-            ("chatgpt_ads_ads_archive", ""),
+            # The audit log reports an archive as a status change (#1030).
+            ("chatgpt_ads_campaigns_archive", "status"),
+            ("chatgpt_ads_ad_groups_archive", "status"),
+            ("chatgpt_ads_ads_archive", "status"),
             ("chatgpt_ads_images_upload_file", ""),
         ],
     )
@@ -334,8 +333,8 @@ _ATTRIBUTION = [
         ImportVerdict.IMPORT,
         "ad-create",
     ),
-    # Archives reported as a status change: the row reads as a status kind
-    # and the archive names read as an entity kind, so they do not match.
+    # Archives reported as a status change: the row and the archive name both
+    # read as a status kind, so the target and the window decide (#1030).
     *(
         (tool, arguments, _audit(obj, obj_id, log_type, _TO_ARCHIVED), verdict, label)
         for tool, arguments, obj, obj_id, prefix, verdict, label in (
@@ -345,7 +344,7 @@ _ATTRIBUTION = [
                 "Campaign",
                 "cmpn_1",
                 "campaign",
-                ImportVerdict.IMPORT,
+                ImportVerdict.ATTRIBUTED_TO_MUREO,
                 "campaign",
             ),
             (
@@ -354,7 +353,7 @@ _ATTRIBUTION = [
                 "AdGroup",
                 "adgrp_1",
                 "ad_group",
-                ImportVerdict.IMPORT,
+                ImportVerdict.ATTRIBUTED_TO_MUREO,
                 "ad-group",
             ),
             (
@@ -363,7 +362,7 @@ _ATTRIBUTION = [
                 "Ad",
                 "ad_1",
                 "ad",
-                ImportVerdict.IMPORT,
+                ImportVerdict.ATTRIBUTED_TO_MUREO,
                 "ad",
             ),
         )
@@ -372,21 +371,20 @@ _ATTRIBUTION = [
             (f"update_{prefix}", f"{label}-update-row"),
         )
     ),
-    # An archive row that names no changed field reads as an entity kind:
-    # a campaign or ad group archive then matches; an ad archive, whose name
-    # yields no kind, still does not.
+    # An archive row that names no changed field reads as an entity kind,
+    # while every archive name reads as a status kind, so none of them match.
     (
         "chatgpt_ads_campaigns_archive",
         {"campaign_id": "cmpn_1"},
         _audit("Campaign", "cmpn_1", "archive_campaign", {}),
-        ImportVerdict.ATTRIBUTED_TO_MUREO,
+        ImportVerdict.IMPORT,
         "campaign-archive-row-no-fields",
     ),
     (
         "chatgpt_ads_ad_groups_archive",
         {"ad_group_id": "adgrp_1"},
         _audit("AdGroup", "adgrp_1", "archive_ad_group", {}),
-        ImportVerdict.ATTRIBUTED_TO_MUREO,
+        ImportVerdict.IMPORT,
         "ad-group-archive-row-no-fields",
     ),
     (

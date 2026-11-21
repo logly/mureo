@@ -683,18 +683,20 @@ deduplicated.
   an ad group entry names the ad group (`entity_type: "ad_group"`,
   `entity_id`, plus its `campaign_id`), and an ad entry names `ad_id` (plus
   its `campaign_id`, not its ad group). These are the identities the change
-  tools record, so mureo's own pause / enable, budget, bid, name and schedule
-  changes are recognised by tool name, target and a 10-minute window, as
-  [change-import.md](change-import.md#deduplication) describes, and are not
-  imported a second time.
+  tools record, so mureo's own pause / enable, archive, budget, bid, name
+  and schedule changes are recognised by tool name, target and a 10-minute
+  window, as [change-import.md](change-import.md#deduplication) describes,
+  and are not imported a second time.
 - **Creates and archives.** A create's record cannot name the entity it
   created, so the audit-log entry for a campaign, ad group or ad mureo
-  created is imported as an external change. An archive reported as a
-  `status` change is imported as external too: the entry reads as a status
-  change and the archive tool's name does not. An archive entry that names
-  no changed field is recognised as mureo's own for a campaign or an ad
-  group, but not for an ad. These are the deduper's verdicts on plausible
-  entries; the platform does not publish how it reports either operation.
+  created is imported as an external change. This is the deduper's verdict
+  on a plausible entry; the platform does not publish how it reports a
+  create. The audit log reports an archive as a `status` change, and the
+  archive tools' names read as a status change too, so mureo's own archive
+  of a campaign, ad group or ad is recognised by tool name, target and the
+  window like its pause / enable. An archive entry that names no changed
+  field reads as a campaign, ad group or ad edit rather than a status
+  change, so it is imported as external for all three.
 - **Always imported as external.** An account-level change (the daily
   spending limit) and an entry on any resource other than a campaign, ad
   group or ad carry no identity, so they are imported as external even when
@@ -994,7 +996,7 @@ account. These points are unverified:
   30MB cap is mureo's. A smaller platform limit would surface as an API
   error.
 - **Archive cascade.** Whether archiving a campaign or an ad group archives
-  its ad groups and ads, and how an archive appears in the audit log.
+  its ad groups and ads.
 
 ## Terms
 
