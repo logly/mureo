@@ -151,7 +151,7 @@ mureo configure
 | `chatgpt_ads_campaigns_pause` / `_enable` | `POST /campaigns/{campaign_id}/pause` / `/activate` | `campaign_id`（必須） |
 | `chatgpt_ads_ad_groups_pause` / `_enable` | `POST /ad_groups/{ad_group_id}/pause` / `/activate` | `ad_group_id`（必須） |
 | `chatgpt_ads_ads_pause` / `_enable` | `POST /ads/{ad_id}/pause` / `/activate` | `ad_id`（必須） |
-| `chatgpt_ads_campaigns_update` | `POST /campaigns/{campaign_id}` | `campaign_id`（必須）、`name`・`start_time`・`end_time` のうち 1 つ以上 |
+| `chatgpt_ads_campaigns_update` | `POST /campaigns/{campaign_id}` | `campaign_id`（必須）、`name` / `start_time` / `end_time` のうち 1 つ以上 |
 | `chatgpt_ads_campaigns_update_budget` | `GET /campaigns/{campaign_id}` のあと `POST /campaigns/{campaign_id}` | `campaign_id`、`budget`（どちらも必須）、`current_daily_budget`、`projected_total_daily_budget` |
 | `chatgpt_ads_ad_groups_update` | `POST /ad_groups/{ad_group_id}` | `ad_group_id`、`name`（どちらも必須） |
 | `chatgpt_ads_ad_groups_update_bid` | `POST /ad_groups/{ad_group_id}` | `ad_group_id`、`bidding_config`（どちらも必須） |

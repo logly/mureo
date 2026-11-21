@@ -164,6 +164,8 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | `google_ads_budget_update` | Update budget | `customer_id`, `budget_id`, one of `amount` / `amount_micros` / `total_amount` / `total_amount_micros` |
 | `google_ads_budget_create` | Create a new campaign budget | `customer_id`, `name`, one of `amount` / `total_amount` / `total_amount_micros` |
 
+A daily and a total amount can be set in one call; `amount` with `amount_micros`, or `total_amount` with `total_amount_micros`, is refused. `google_ads_budget_create` takes a total amount only with `period` `CUSTOM_PERIOD`, and refuses that period without one.
+
 #### Accounts
 
 | Tool | Description | Required Parameters |
