@@ -825,13 +825,12 @@
     const outcome = MUREO.postOutcome(res);
     if (outcome.ok && outcome.body.status === "ok") {
       MUREO.toast(MUREO.t("dashboard.plugin_credentials_saved"), "success");
-      // Clear secret inputs so the next view starts from the "keep
-      // existing" baseline rather than the just-typed plain text.
-      Array.from(form.querySelectorAll('input[type="password"]')).forEach(
-        function (input) {
-          input.value = "";
-        }
-      );
+      // The typed secret leaves the page, then the section is read again so
+      // each field reports what is now stored (#1025).
+      form.querySelectorAll('input[type="password"]').forEach(function (input) {
+        input.value = "";
+      });
+      renderPluginCredentials();
     } else {
       MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
     }

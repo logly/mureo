@@ -412,7 +412,7 @@ KNOWN_OVER_LIMIT_JS: dict[tuple[str, str], int] = {
 # shrink-only; remove an entry when you fix it, never add one
 KNOWN_LONG_FILES: dict[str, int] = {
     "mureo/_data/web/auth_wizards_meta.js": 831,
-    "mureo/_data/web/dashboard_plugins.js": 851,
+    "mureo/_data/web/dashboard_plugins.js": 850,
     "mureo/_data/web/dashboard_reports_detail.js": 910,
     "mureo/_data/web/dashboard_reports_report.js": 845,
     "mureo/_data/web/dashboard_setup.js": 833,
