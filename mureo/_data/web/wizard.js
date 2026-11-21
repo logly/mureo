@@ -12,6 +12,7 @@
     "ga4",
     "tiktok_ads",
     "amazon_ads",
+    "chatgpt_ads",
   ];
 
   // The user's explicit host choice is persisted client-side so it
@@ -83,6 +84,7 @@
       ga4: false,
       tiktok_ads: false,
       amazon_ads: false,
+      chatgpt_ads: false,
     },
     providerChoice: {
       google_ads: null, // "official" | "native" | a plugin provider's name
@@ -205,6 +207,9 @@
     // provider install, no native↔official choice), so selecting it queues
     // exactly one thing — the credential slot that fills the ``amazon_ads``
     // section the bridge reads.
+    // ChatGPT Ads: mureo serves it itself from one API key, so selecting it
+    // likewise queues exactly one thing — the credential slot that fills the
+    // ``chatgpt_ads`` section.
     // GA4: its slot is skipped when the store already holds the ``ga4``
     // section (a credential provider hook may have written it), for the
     // same reason the Google slot is skipped on a saved token.
@@ -217,7 +222,8 @@
         (STATE.providerChoice.meta_ads === "native" || isPluginChoice("meta_ads"))) ||
       STATE.platforms.search_console ||
       (STATE.platforms.ga4 && !STATE.existing.ga4.configured) ||
-      STATE.platforms.amazon_ads
+      STATE.platforms.amazon_ads ||
+      STATE.platforms.chatgpt_ads
     );
   }
 

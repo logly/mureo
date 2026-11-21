@@ -47,8 +47,14 @@ generation) for ChatGPT Ads.
 mureo configure
 ```
 
-Paste the key into the **Ads API key** field of the **ChatGPT Ads** tab in the
-dashboard's **Connection credentials** section and save. The value is stored in the `chatgpt_ads` section of
+Paste the key into the **Ads API key** field and save, in either place:
+
+- the step wizard: pick **ChatGPT Ads** on the platform step, and the
+  authentication step shows the field;
+- the dashboard: the **ChatGPT Ads** tab in the **Connection credentials**
+  section.
+
+The value is stored in the `chatgpt_ads` section of
 `~/.mureo/credentials.json`:
 
 ```json

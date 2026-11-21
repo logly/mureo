@@ -26,6 +26,7 @@ function makeState(patch) {
       ga4: false,
       tiktok_ads: false,
       amazon_ads: false,
+      chatgpt_ads: false,
     },
     providerChoice: { google_ads: "native", meta_ads: "native" },
     providerInstalled: {},
@@ -94,6 +95,42 @@ test.describe("buildAuthQueue and the saved Google OAuth token", () => {
     const keys = keysOf(page.sandbox.MUREO_AUTH.buildAuthQueue(state));
 
     assert.ok(keys.includes("google_ads"));
+  });
+});
+
+test.describe("buildAuthQueue and ChatGPT Ads", () => {
+  test("queues the ChatGPT Ads credential slot when selected", () => {
+    const page = loadAuthWizardPage({});
+    const state = makeState({ platforms: { chatgpt_ads: true } });
+
+    const queue = page.sandbox.MUREO_AUTH.buildAuthQueue(state);
+
+    // Copied out of the page's own context, whose arrays and objects
+    // deepEqual does not treat as ours.
+    assert.deepEqual(
+      Array.from(queue, function (slot) {
+        return Object.assign({}, slot);
+      }),
+      [{ key: "chatgpt_ads", pluginProvider: "chatgpt_ads" }]
+    );
+  });
+
+  test("queues Amazon Ads before ChatGPT Ads when both are selected", () => {
+    const page = loadAuthWizardPage({});
+    const state = makeState({ platforms: { amazon_ads: true, chatgpt_ads: true } });
+
+    const keys = keysOf(page.sandbox.MUREO_AUTH.buildAuthQueue(state));
+
+    assert.deepEqual(Array.from(keys), ["amazon_ads", "chatgpt_ads"]);
+  });
+
+  test("queues no ChatGPT Ads slot when it is not selected", () => {
+    const page = loadAuthWizardPage({});
+    const state = makeState({ platforms: { amazon_ads: true } });
+
+    const keys = keysOf(page.sandbox.MUREO_AUTH.buildAuthQueue(state));
+
+    assert.ok(!keys.includes("chatgpt_ads"));
   });
 });
 

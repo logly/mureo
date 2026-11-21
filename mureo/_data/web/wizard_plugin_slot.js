@@ -1,7 +1,7 @@
 // wizard_plugin_slot.js — the auth-step slot for a declarative credential
-// provider (Amazon Ads, or a plugin provider chosen for a built-in
-// platform): the slot's frame, the declared-field form and its save, and
-// Amazon's inline authorization once the save lands. Kept out of
+// provider (Amazon Ads, ChatGPT Ads, or a plugin provider chosen for a
+// built-in platform): the slot's frame, the declared-field form and its
+// save, and Amazon's inline authorization once the save lands. Kept out of
 // auth_wizards.js so that file stays within the 800-line budget. Loaded
 // BEFORE auth_wizards.js and consumed through window.MUREO_AUTH_PLUGIN_SLOT;
 // the descriptor fetch, the field inputs and the OAuth card are read off

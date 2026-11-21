@@ -44,6 +44,7 @@ function makeState(patch) {
       ga4: false,
       tiktok_ads: false,
       amazon_ads: false,
+      chatgpt_ads: false,
     },
     providerChoice: { google_ads: null, meta_ads: null, search_console: null },
     providerInstalled: {},
@@ -759,6 +760,106 @@ test.describe("the auth step's slot for an unconfigured provider", () => {
   });
 });
 
+test.describe("the auth step's ChatGPT Ads slot", () => {
+  function apiKeyDescriptor(configured) {
+    return {
+      provider_name: "chatgpt_ads",
+      display_name: "ChatGPT Ads",
+      configured: configured,
+      fields: [
+        {
+          key: "api_key",
+          display_name: "Ads API key",
+          required: true,
+          secret: true,
+          configured: configured,
+        },
+      ],
+    };
+  }
+
+  function renderChatgptSlot(configured) {
+    const page = loadAuthWizardPage({
+      "/api/credentials/plugins": { plugins: [apiKeyDescriptor(configured)] },
+    });
+    // Amazon's inline authorization must never follow a ChatGPT Ads save,
+    // so the module is present and counts every section it would build.
+    const amazon = { built: 0 };
+    page.sandbox.MUREO_AMAZON_OAUTH = {
+      buildAuthorizeSection: function () {
+        amazon.built += 1;
+        return page.document.createElement("div");
+      },
+    };
+    const host = page.document.createElement("div");
+    const state = makeState({ platforms: { chatgpt_ads: true } });
+    const renders = { count: 0 };
+    page.sandbox.MUREO_AUTH.renderSequentialQueue(host, state, function () {
+      renders.count += 1;
+    });
+    return { page: page, host: host, renders: renders, amazon: amazon };
+  }
+
+  function doneButton(host) {
+    return host
+      .querySelectorAll("button")
+      .find((b) => b.getAttribute("data-i18n") === "wizard.auth.done_button");
+  }
+
+  test("renders one input and keeps Done closed until a key is typed", async () => {
+    const { host } = renderChatgptSlot(false);
+    await settle();
+
+    const inputs = host.querySelectorAll("input");
+    assert.equal(inputs.length, 1);
+    assert.equal(inputs[0].name, "api_key");
+    const done = doneButton(host);
+    assert.equal(done.disabled, true);
+
+    inputs[0].value = "sk-test";
+    inputs[0].dispatchEvent({ type: "input" });
+
+    assert.equal(done.disabled, false);
+  });
+
+  test("Done saves the key and leaves the slot without Amazon's authorization", async () => {
+    const { page, host, renders, amazon } = renderChatgptSlot(false);
+    await settle();
+    const posted = [];
+    page.sandbox.MUREO.postJson = function (url, payload) {
+      posted.push({ url: url, payload: JSON.parse(JSON.stringify(payload)) });
+      return Promise.resolve({ ok: true, status: 200, body: { status: "ok" } });
+    };
+    const input = host.querySelectorAll("input")[0];
+    input.value = "sk-test";
+    input.dispatchEvent({ type: "input" });
+
+    doneButton(host).click();
+    await settle();
+
+    assert.equal(posted.length, 1);
+    assert.equal(posted[0].url, "/api/credentials/plugins/save");
+    assert.deepEqual(posted[0].payload, {
+      provider_name: "chatgpt_ads",
+      values: { api_key: "sk-test" },
+    });
+    assert.equal(amazon.built, 0);
+    assert.ok(!host.textContent.includes("wizard.auth.amazon_saved_now_authorize"));
+    // The only slot in the queue, so leaving it leaves the auth step.
+    assert.equal(renders.count, 1);
+  });
+
+  test("a stored key leaves Done open with the input empty", async () => {
+    const { host } = renderChatgptSlot(true);
+    await settle();
+
+    const inputs = host.querySelectorAll("input");
+    assert.equal(inputs.length, 1);
+    assert.equal(inputs[0].value, "");
+    assert.equal(doneButton(host).disabled, false);
+  });
+});
+
 test.describe("the Setup tab's mureo integrations rows", () => {
   function renderRows(status) {
     const page = loadDashboardPage({});
@@ -895,5 +996,23 @@ test.describe("the completed step", () => {
     const li = summary.querySelector('[data-i18n="wizard.platforms.google_ads"]');
     assert.equal(li.tagName, "LI");
     assert.ok(!li.textContent.includes(GOOGLE_PROVIDER));
+  });
+
+  test("ChatGPT Ads alone walks through the auth step to a saved row", () => {
+    const page = loadWizardPage({});
+    const wizard = page.sandbox.MUREO_WIZARD;
+    wizard.state.platforms.chatgpt_ads = true;
+
+    assert.equal(
+      wizard.effectiveSteps().join(","),
+      "host,basic,platforms,auth,completed"
+    );
+    wizard.state.stepIndex = wizard.effectiveSteps().indexOf("completed");
+    wizard.render();
+
+    const summary = page.root.querySelector(".wizard-completed-summary");
+    assert.equal(summary.querySelectorAll("li").length, 1);
+    assert.ok(summary.querySelector('[data-i18n="wizard.platforms.chatgpt_ads"]'));
+    assert.equal(page.root.querySelectorAll(".wizard-pending-reminder").length, 0);
   });
 });

@@ -50,10 +50,15 @@ mureo が ChatGPT Ads のために `OPENAI_API_KEY`（Creative Studio が画像�
 mureo configure
 ```
 
-ダッシュボードの**接続先の認証情報**（Connection credentials）セクションにある
-**ChatGPT Ads** タブで、**Ads API キー**（Ads API key）欄にキーを貼り付けて
-保存します。値は `~/.mureo/credentials.json` の `chatgpt_ads` セクションに
-保存されます:
+**Ads API キー**（Ads API key）欄にキーを貼り付けて保存します。入力できる
+場所は 2 つあります:
+
+- ステップウィザード: プラットフォームの選択で **ChatGPT Ads** を選ぶと、
+  認証のステップにこの欄が出ます。
+- ダッシュボード: **接続先の認証情報**（Connection credentials）セクションの
+  **ChatGPT Ads** タブ。
+
+値は `~/.mureo/credentials.json` の `chatgpt_ads` セクションに保存されます:
 
 ```json
 {
