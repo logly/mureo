@@ -144,14 +144,21 @@ def _changed_fields(changes: object) -> tuple[str, ...]:
     """The first :data:`MAX_CHANGED_FIELDS` usable keys of ``changes``.
 
     ``obj_type`` names the resource, not a field, and is not counted. The
-    scan stops at the bound, so a huge object costs no more than a small one.
+    audit log lists every field of the resource and leaves the ones the entry
+    did not change null, so a key whose value is ``None`` is not a changed
+    field: counting it would name unchanged fields and could push the real
+    change past the bound (#1026). The scan stops at the bound, so a huge
+    object costs no more than a small one.
     """
     if not isinstance(changes, dict):
         return ()
     names = (
         key
-        for key in changes
-        if isinstance(key, str) and key != "obj_type" and _FIELD_NAME.fullmatch(key)
+        for key, value in changes.items()
+        if value is not None
+        and isinstance(key, str)
+        and key != "obj_type"
+        and _FIELD_NAME.fullmatch(key)
     )
     return tuple(islice(names, MAX_CHANGED_FIELDS))
 

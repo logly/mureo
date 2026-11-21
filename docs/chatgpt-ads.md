@@ -644,10 +644,13 @@ deduplicated.
   `<TYPE>` is the entry's `obj_type` in upper snake case (`Campaign` →
   `CAMPAIGN`, `AdGroup` → `AD_GROUP`). The operation is the first word of
   `audit_log_type` (`update_campaign` → `UPDATE`), and the changed fields are
-  the keys of `changes`: at most 20 changed fields per entry, in the order the
-  entry gives them, each made of letters, digits, `_` and `.` (at most 64
-  characters). Ids and the actor are kept only when made of letters, digits
-  and `_ . : @ -` (at most 200 characters). The free-text `item_name` is never
+  the keys of `changes` that hold a value: at most 20 changed fields per
+  entry, in the order the entry gives them, each made of letters, digits, `_`
+  and `.` (at most 64 characters). The audit log lists every field of the
+  resource in `changes` and leaves the ones the entry did not change null, so
+  a null key is not a changed field. Ids and the actor are kept only when
+  made of letters, digits and `_ . : @ -` (at most 200 characters). The
+  free-text `item_name` is never
   copied, and `actor_type` is not read: it names the kind of actor, not the
   client that made the change. An entry without a usable `ts`, or dated
   outside the window, is skipped and counted in a note; one entry dated in
