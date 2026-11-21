@@ -40,13 +40,13 @@ Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the officia
 
 ## What is mureo?
 
-mureo is a **local-first control plane for AI ad ops**. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) operate Google Ads, Meta Ads, Amazon Ads, TikTok Ads, Search Console, and GA4 *through mureo* — which keeps every action grounded in your business strategy, tied to real outcomes, and recorded in an audit log you can replay.
+mureo is a **local-first control plane for AI ad ops**. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) operate Google Ads, Meta Ads, Amazon Ads, TikTok Ads, ChatGPT Ads, Search Console, and GA4 *through mureo* — which keeps every action grounded in your business strategy, tied to real outcomes, and recorded in an audit log you can replay.
 
-mureo ships its own connectors for Google Ads, Meta Ads, and Search Console today, and plugs in official ad-platform MCPs as platforms release them (TikTok's is already supported, and **Amazon Ads (official MCP bridge)** is bridged through mureo so your credentials never enter the host's MCP config — see [docs/amazon-ads.md](docs/amazon-ads.md)). mureo's value is not the API connection — it is **what happens around it**:
+mureo ships its own connectors for Google Ads, Meta Ads, and Search Console today, plus a bundled ChatGPT Ads provider (see [docs/chatgpt-ads.md](docs/chatgpt-ads.md)), and plugs in official ad-platform MCPs as platforms release them (TikTok's is already supported, and **Amazon Ads (official MCP bridge)** is bridged through mureo so your credentials never enter the host's MCP config — see [docs/amazon-ads.md](docs/amazon-ads.md)). mureo's value is not the API connection — it is **what happens around it**:
 
 - **Strategy-grounded** — every decision reads `STRATEGY.md` (persona, USP, brand voice, goals)
 - **Safety-gated** — rollback allow-list, GAQL guards, BYOD read-only by default, credential guard, per-platform throttle
-- **Cross-platform** — Google Ads / Meta Ads / Amazon Ads / TikTok Ads / Search Console / GA4 in one workflow
+- **Cross-platform** — Google Ads / Meta Ads / Amazon Ads / TikTok Ads / ChatGPT Ads / Search Console / GA4 in one workflow
 - **Auditable** — append-only action log with rollback, plus a journal of *every* tool call and its outcome (`mureo journal`)
 - **Local-first** — credentials never leave your machine
 - **Learnable** — `/learn` builds account-specific knowledge over time
@@ -145,13 +145,13 @@ Every operation starts from `STRATEGY.md` -- your persona, USP, brand voice, goa
 
 ### Cross-platform analysis
 
-mureo orchestrates across Google Ads, Meta Ads, Amazon Ads, TikTok Ads, Search Console, and GA4 in a single workflow:
+mureo orchestrates across Google Ads, Meta Ads, Amazon Ads, TikTok Ads, ChatGPT Ads, Search Console, and GA4 in a single workflow:
 
 - `/daily-check` -- pulls delivery status, ad performance, organic search trends, and site behavior across all platforms, then correlates them into one health report.
 - `/search-term-cleanup` -- compares paid keywords against organic rankings to eliminate wasteful overlap.
 - `/competitive-scan` -- combines auction insights with organic position data for a complete competitive picture.
 
-The agent auto-discovers your configured platforms. Add Meta Ads, Amazon Ads, or TikTok Ads later? Every command adapts automatically.
+The agent auto-discovers your configured platforms. Add Meta Ads, Amazon Ads, TikTok Ads, or ChatGPT Ads later? Every command adapts automatically.
 
 ### Built-in marketing expertise
 
@@ -184,7 +184,7 @@ Marketing accounts are a high-value target. mureo is built with defense-in-depth
 - **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline from the action log and emits prioritized alerts for zero spend, CPA spikes, and CTR drops, with sample-size gates that suppress single-day noise. Exposed to agents via the `analysis_anomalies_check` MCP tool; `state_file` is sandboxed inside the MCP server's CWD so a prompt-injected agent cannot redirect it at an attacker-crafted `STATE.json`.
 - **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. Only operations on an explicit allow-list are planned; destructive verbs (`.delete`, `.remove`, `.transfer`) and unexpected parameter keys are refused, so a compromised agent cannot smuggle a privileged call through the rollback path. `mureo rollback list` / `show` let operators preview plans, and the `rollback_apply` MCP tool executes them by re-dispatching through the same handler used for forward actions so the reversal re-enters the full policy gate (auth, rate limit, validation). Apply requires `confirm=true` (literal boolean), refuses `rollback.*` self-recursion, records the reversal as an append-only `action_log` entry tagged with `rollback_of=<index>`, and refuses a second apply of the same index.
 - **Immutable data models** — every state object (`StateDocument`, `ActionLogEntry`, `CampaignSnapshot`, `Anomaly`, `RollbackPlan`) is a `frozen=True` dataclass; an agent cannot silently mutate its own record of what happened.
-- **Local-only credentials** — tokens are loaded from `~/.mureo/credentials.json` or environment variables and transmitted only to the official ad-platform APIs. mureo itself has no telemetry.
+- **Local-only credentials** — tokens are loaded from `~/.mureo/credentials.json` or environment variables and each credential is transmitted only to the service it belongs to (the official ad-platform APIs, and the image-generation API you configure for Creative Studio). mureo itself has no telemetry.
 
 See [SECURITY.md](SECURITY.md) for the full threat model and vulnerability reporting process.
 
@@ -352,7 +352,7 @@ Two local files drive strategy-aware operations. Run `/onboard` to generate them
 
 **ChatGPT Ads** is read and changed through OpenAI's Advertiser API by a provider that ships with mureo: ten read tools for the ad account, its spending limits, campaigns, ad groups, ads, insights and the change history, and eleven change tools (pause / activate, rename, schedule, budget, bids, the account daily spending limit), each recorded in `action_log` with a reversal. Further tools create campaigns, ad groups and ads (always paused) and archive them, upload images, preview ads and search locations; creates, archives and uploads are recorded without a reversal. Further tools create custom audiences and add or remove their members from a local file (emails and phone numbers are hashed on the machine), set up pixels and conversion events, and report conversions; audience, pixel and event creates and membership changes are recorded without a reversal. Create an Ads API key on the Settings page in Ads Manager for your own ad account (one key reads one ad account) and paste it on the **ChatGPT Ads** card of `mureo configure`, or set `CHATGPT_ADS_API_KEY`. Set `MUREO_DISABLE_CHATGPT_ADS=1` to switch the provider off. **[ChatGPT Ads guide →](docs/chatgpt-ads.md)**
 
-**TikTok Ads** is supported through TikTok's official hosted MCP (the "TikTok for Business MCP Server"). mureo ships it as the `tiktok-ads-official` provider — add it from the `mureo configure` dashboard or with `mureo providers add`, then authenticate in the browser with your TikTok for Business account on first connect (no developer token required). Once connected, workflow commands treat `tiktok_ads` as a first-class platform: `/daily-check` and the reports include it, and confirmed changes are recorded in the action log. mureo-native analytics (anomaly baselines, RSA audit) remain Google / Meta specific.
+**TikTok Ads** is supported through TikTok's official hosted MCP (the "TikTok for Business MCP Server"). mureo ships it as the `tiktok-ads-official` provider — mureo does not register it locally: the `mureo configure` dashboard and `mureo providers add tiktok-ads-official` print the steps to add it as a Claude.ai custom connector (requires a paid Claude plan), and you then sign in with your TikTok for Business account in the browser (no developer token required). Once connected, workflow commands treat `tiktok_ads` as a first-class platform: `/daily-check` and the reports include it, and confirmed changes are recorded in the action log. mureo-native analytics (anomaly baselines, RSA audit) remain Google / Meta specific.
 
 mureo's workflow commands leverage GA4 data (conversion rates, user behavior, landing page performance) when a GA4 MCP server — e.g. [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp) — is configured alongside mureo. GA4 is optional; all commands work without it. mureo also works alongside any other MCP server in the same session, and workflow commands incorporate their data when available. Setup walkthroughs: **[Integrations Guide →](docs/integrations.md)**
 
@@ -368,8 +368,8 @@ Any pip-installable package can add a new ad-platform provider (Microsoft/Bing A
 - **No database** -- all state is either in the ad platform APIs or in local files (`STRATEGY.md`, `STATE.json`).
 - **No LLM dependency** -- mureo does not embed an LLM. Inference, planning, and decision-making are the agent's responsibility.
 - **No web framework** -- CLI (Typer) and MCP (stdio) only; the `mureo configure` UI is stdlib `http.server` on `127.0.0.1`.
-- **Immutable data models** -- all dataclasses use `frozen=True` to prevent accidental mutation.
-- **Credentials stay local** -- loaded from `~/.mureo/credentials.json` or environment variables. Never sent anywhere except the official ad platform APIs.
+- **Immutable data models** -- state and record models (`StateDocument`, `ActionLogEntry`, `RollbackPlan`, ...) use `frozen=True` to prevent accidental mutation.
+- **Credentials stay local** -- loaded from `~/.mureo/credentials.json` or environment variables. Never sent anywhere except the service each credential belongs to (the official ad platform APIs, and the image-generation API you configure for Creative Studio).
 
 Module layout and system diagrams: **[Architecture Guide →](docs/architecture.md)**
 

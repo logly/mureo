@@ -1,4 +1,4 @@
-# mureo標準ツール と 公式MCP の違い（Google / Meta / Amazon）
+# mureo標準ツール と 公式MCP の違い（Google / Meta / Amazon / ChatGPT Ads）
 
 > 状態: 2026-09-17。各広告プラットフォームの公式MCPはベータであり、提供ツール
 > は時期によって変化します。特定機能に依存する前に最新状態を再確認してください。
@@ -11,8 +11,9 @@ Search Console の 3 プラットフォームです（本リポジトリの `mur
 `mureo/meta_ads`、`mureo/search_console`）。GA4 は標準ツール **ではありません**
 — mureo は Google 公式の Analytics MCP を `ga4-official` プロバイダとして
 インストールします（`mureo providers add ga4-official`。詳細は
-[integrations.md](./integrations.md)）。それ以外のプラットフォームはすべて、
-別配布の pip インストール可能なプラグインとして提供され、mureo はプロバイダ
+[integrations.md](./integrations.md)）。Amazon Ads と ChatGPT Ads は本体同梱の
+プロバイダ（`mureo/bundled_providers.py`）として提供され、それ以外の
+プラットフォームは別配布の pip インストール可能なプラグインとして提供され、mureo はプロバイダ
 レジストリ（`mureo.providers` エントリポイントグループ）経由でそれらを検出
 します。詳細は [plugin-authoring.md](./plugin-authoring.md) を参照してください。
 一方で各広告プラットフォームは
@@ -135,11 +136,13 @@ Google と Meta における実務上の違い:
 
 公式MCPと同等の操作領域に加え、上記の「できない」領域を **すべて** カバー:
 
-- キャンペーン、広告セット、広告（CRUD + 一時停止 / 有効化）
+- キャンペーン、広告セット、広告（CRUD + 一時停止 / 有効化）— **入札戦略**、**入札の制約（min-ROAS）**、**promoted_object**（コンバージョン最適化）を含む
+- **ページの検出**（`pages_list`）
 - オーディエンス + **類似オーディエンス**
-- クリエイティブ — 単体 / カルーセル / コレクション / ダイナミック / リード — + 画像・動画アップロード
+- **ターゲティングの検索** — 興味関心の検索と、カテゴリのカタログ（行動 / 属性 など）から Meta 内部のターゲティング ID を解決
+- クリエイティブ — 単体の画像 **または動画** / カルーセル / コレクション / ダイナミック / リード — + 画像・動画アップロード、**動画の処理状況の確認とサムネイルの選択**
 - インサイト + ブレイクダウン、分析（パフォーマンス / オーディエンス / 配置 / コスト / 比較 / クリエイティブ提案）
-- Pixel（一覧 / 取得 / 統計 / イベント）と **コンバージョンAPI送信**（購入 / リード）
+- Pixel（一覧 / 取得 / 統計 / イベント / **作成**）と **コンバージョンAPI送信**（購入 / リード）
 - カタログ / 商品 / フィード
 - **リードフォーム + リード取得 + CSVエクスポート**
 - **スプリットテスト**、**自動化ルール**、投稿ブースト、**Instagram**（アカウント / メディア / ブースト）
@@ -264,7 +267,7 @@ CLI の `mureo providers add` も、**公式プロバイダが実際にクレデ
 値が足りないときは CLI が不足している変数名を表示します（#945）。公式
 プロバイダを削除するとフラグは解除され、標準ツールが再び有効になります。
 
-- 標準 → 公式へ切替: `mureo providers add <provider>`（または configure ダッシュボードのトグル）
+- 標準 → 公式へ切替: `mureo providers add <provider>`（または configure ダッシュボードのトグル）。ホスト型（Meta）は Claude.ai コネクタを追加したあと `mureo providers confirm <provider>`
 - 元に戻す: `mureo providers remove <provider>`
 - Search Console には公式MCPが存在しないため、mureo標準が正典であり無効化されません。
 

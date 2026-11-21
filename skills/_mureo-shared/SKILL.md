@@ -166,7 +166,7 @@ The **entry-point name** an analytics module registered itself under is reported
 
 **The older `plugin:<dist>` form stays valid on read.** State written before the per-provider key keeps working: `mureo_analytics_run` accepts it, the write guards accept it, and the dashboard labels it as before. For a distribution providing a single platform the two forms mean the same platform. **Do not rewrite an existing entry to the new form** — mureo never merges, drops or rewrites `platforms` entries, and writing an account under a second key is what double-counts it on the Reports card (#533). Keep writing whichever key that platform is already stored under; use the per-provider key for a platform that has no entry yet.
 
-When a skill reports `analytics_not_available_for_<platform>`, `<platform>` is this canonical key (`analytics_not_available_for_plugin:mureo-logly-bridge:logly_ads_context`), not the registry name — so the notice names the same platform the rest of the output does.
+When a skill reports `analytics_not_available_for_<platform>`, `<platform>` is this canonical key (`analytics_not_available_for_plugin:mureo-acme-bridge:acme_ads_context`), not the registry name — so the notice names the same platform the rest of the output does.
 
 ### Mutating plugin tools — structural strategy parity
 
@@ -450,7 +450,7 @@ The guardrails are the only surface that stops one.
 |---|---|---|
 | Google Ads | Yes — `bidding_strategy_system_status` from the campaign snapshot in STATE.json | Yes — Google's own `LEARNING_*` enum members |
 | Meta Ads | No — Meta exposes `learning_stage_info` on the **ad set**, mureo does not fetch it and STATE.json is campaign-level | No — Meta documents "significant edits" without enumerating them |
-| Amazon Ads (bridge), ChatGPT Ads (bundled provider), Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+| Amazon Ads (bridge), ChatGPT Ads (bundled provider), plugin platforms | No — unless the plugin registers rules | No — unless the plugin registers rules |
 
 So the check is **complete on Google Ads and honest everywhere else**. For a
 Google campaign, keep `bidding_details.bidding_strategy_system_status` fresh in

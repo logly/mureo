@@ -13,12 +13,12 @@ Run the mureo MCP server in an isolated container. Useful for:
 
 ```bash
 docker build -t mureo .
-docker run --rm -v ~/.mureo:/home/mureo/.mureo mureo
+docker run -i --rm -v ~/.mureo:/home/mureo/.mureo mureo
 ```
 
 An image built before 2026-10-20 must be rebuilt with `docker build --no-cache -t mureo .` so the cached dependency layer picks up the fixed certifi and grpcio.
 
-Connect your MCP client by pointing its config at this `docker run` command.
+Connect your MCP client by pointing its config at this `docker run` command (keep `-i`: the server speaks MCP over stdin/stdout).
 
 ## Authentication
 
@@ -46,7 +46,7 @@ Required: Google needs `client_id` / `client_secret` / `refresh_token` (`develop
 **2. Environment variables** — useful for CI/CD where secrets come from a secret manager:
 
 ```bash
-docker run --rm \
+docker run -i --rm \
   -e GOOGLE_ADS_CLIENT_ID=... \
   -e GOOGLE_ADS_CLIENT_SECRET=... \
   -e GOOGLE_ADS_REFRESH_TOKEN=... \
@@ -55,7 +55,7 @@ docker run --rm \
   mureo
 ```
 
-Supported: `GOOGLE_ADS_{DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, LOGIN_CUSTOMER_ID, CUSTOMER_ID}`, `META_ADS_{ACCESS_TOKEN, APP_ID, APP_SECRET, TOKEN_OBTAINED_AT, ACCOUNT_ID}`.
+Supported: `GOOGLE_ADS_{DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, LOGIN_CUSTOMER_ID, CUSTOMER_ID}`, `META_ADS_{ACCESS_TOKEN, APP_ID, APP_SECRET, TOKEN_OBTAINED_AT}`, `AMAZON_ADS_{CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, ACCESS_TOKEN, REGION, ACCOUNT_MODE, PROFILE_ID, ACCOUNT_ID, MANAGER_ACCOUNT_ID}`, `CHATGPT_ADS_API_KEY`.
 
 **3. Interactive wizard inside Docker** — if you don't have OAuth tokens yet and don't want to install mureo on the host:
 

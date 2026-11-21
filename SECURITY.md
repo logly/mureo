@@ -2,10 +2,10 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| 0.10.x  | :white_check_mark: |
-| < 0.10  | :x:                |
+| Version              | Supported          |
+|----------------------|--------------------|
+| Latest minor release | :white_check_mark: |
+| Older releases       | :x:                |
 
 We support the latest minor release line. Upgrade to the current version to
 receive security fixes before reporting an issue.
@@ -59,8 +59,8 @@ wild against AI-assisted ad management.
 ### Credential guard (PreToolUse hook)
 
 `mureo setup claude-code` writes a PreToolUse hook into
-`~/.claude/settings.json` that blocks AI agents from reading
-`~/.mureo/credentials.json`, `.env`, and similar secret files. This
+`~/.claude/settings.json` that blocks AI agents from reading files
+under `~/.mureo` (including `~/.mureo/credentials.json`). This
 prevents a prompt-injection payload from tricking the agent into
 exfiltrating OAuth tokens or developer tokens via the file-system
 tools.
@@ -128,9 +128,15 @@ executor; without hardening, a prompt-injected agent could log a
 The planner enforces:
 
 - An explicit allow-list of operations (budget update + status
-  toggles across Google / Meta Ads). Anything outside it is refused.
-- Destructive verbs (`.delete`, `.remove`, `.destroy`, `.purge`,
-  `.transfer`) are refused even if they lexically match.
+  toggles across Google / Meta Ads, plus placement-exclusion
+  reversals), extended by reversals a registered plugin tool declares
+  (bounded by that tool's input schema). Anything outside it is
+  refused.
+- Destructive verbs (`_delete`, `_remove`, `_destroy`, `_purge`,
+  `_transfer`) are refused even if they lexically match. The one
+  exception is `google_ads_negative_placements_remove`, the exact
+  inverse of adding a placement exclusion, which removes only
+  negative placement criteria at the named level.
 - `params` keys must be a subset of the per-operation allowed key
   set, so a budget-update reversal cannot smuggle keys like
   `login_customer_id`.
@@ -161,7 +167,7 @@ Additional hardening on the executor:
   call with a coerced affirmative.
 - The planner is re-invoked at execution time rather than cached, so
   a stale allow-list decision can never be smuggled in via the log.
-- `plan.operation` starting with `rollback.` is refused as
+- `plan.operation` starting with `rollback_` is refused as
   defense-in-depth, preventing recursion into the rollback surface
   even if a future allow-list entry accidentally names a rollback
   tool.
@@ -222,7 +228,8 @@ leg, the wizard is hardened layer-by-layer:
 - **Defensive HTTP headers.** Responses carry
   `Content-Security-Policy: default-src 'none'; style-src
   'unsafe-inline'; base-uri 'none'; frame-ancestors 'none';
-  object-src 'none'; form-action 'self' https://accounts.google.com`,
+  object-src 'none'; form-action 'self' https://accounts.google.com
+  https://www.facebook.com`,
   plus `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
   and `X-Content-Type-Options: nosniff`.
 - **Stdlib only.** The wizard uses `http.server` + `urllib` — no
@@ -241,9 +248,18 @@ decided.
 
 Credentials are loaded from `~/.mureo/credentials.json` or
 environment variables and never transmitted anywhere except the
-official Google Ads, Meta Ads, and Search Console APIs, the Login with
-Amazon token endpoint, and the official Amazon Ads MCP endpoint. mureo
-itself has no telemetry or phone-home behavior.
+official Google Ads, Meta Ads, and Search Console APIs, the Google
+OAuth token endpoint, the Login with Amazon token endpoint, the
+official Amazon Ads MCP endpoint, the OpenAI Advertiser API (ChatGPT
+Ads), the image-generation APIs you configure for Creative Studio
+(OpenAI, Google Gemini, fal.ai), and the OAuth token and revocation
+endpoints an installed plugin provider declares for its own
+credentials. mureo itself has no telemetry or
+phone-home behavior. The one outbound check is the configure UI's
+update check: when the UI is opened (and periodically while
+`mureo configure` runs as an always-on service), it runs a pip dry-run
+against your configured package index for mureo and installed
+`mureo-*` packages only; no credentials or usage data are sent.
 
 Each successful save keeps a single rolling backup of the previous
 file at `~/.mureo/credentials.json.bak` (owner-only `0o600`, covered
