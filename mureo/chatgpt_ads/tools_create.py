@@ -326,6 +326,9 @@ _AD_GROUPS_CREATE = build_tool(
         "Bids are micros of the account currency (1,000,000 = one unit); "
         "with impression billing the bid is per impression (CPM / 1000). "
         "Omitting both strategy and max_bid_micros selects automatic bidding. "
+        "A fixed bid is sent as strategy fixed_bid with max_bid_micros; on "
+        "click billing it reads back as target_strategy target_cpc with "
+        "target_micros. "
         "The billing event and strategy must suit the campaign's "
         "bidding_type; the platform enforces it. The STRATEGY.md bid caps "
         "(max_cpc_bid_per_ad_group, max_bid_amount_per_ad_set) read "
@@ -346,6 +349,9 @@ _AD_GROUPS_CREATE = build_tool(
                 "currency (1,000,000 = one unit). With impression billing the "
                 "bid is per impression, not per thousand: CPM / 1000. Omitting "
                 "both strategy and max_bid_micros selects automatic bidding. "
+                "A fixed bid is sent as strategy fixed_bid with "
+                "max_bid_micros; on click billing it reads back as "
+                "target_strategy target_cpc with target_micros. "
                 "bid_multiplier_micros 1000000 = 1.0x."
             ),
         },

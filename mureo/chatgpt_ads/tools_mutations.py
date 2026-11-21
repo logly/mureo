@@ -60,7 +60,8 @@ BUDGET_CONTEXT_KEYS = (_CONVENTION_CURRENT_KEY, CONVENTION_TOTAL_KEY)
 BILLING_EVENT_TYPES = ("impression", "click")
 #: Strategies a request may name. Responses can also say ``automated_bid``,
 #: which a request expresses by omitting both ``strategy`` and
-#: ``max_bid_micros``.
+#: ``max_bid_micros``, and a fixed bid reads back as ``target_strategy`` /
+#: ``target_micros`` instead of ``strategy`` / ``max_bid_micros``.
 BID_STRATEGIES = ("fixed_bid", "maximize_clicks", "maximize_conversions")
 
 MUTATES = ToolAnnotations(readOnlyHint=False)
@@ -145,7 +146,10 @@ BIDDING_CONFIG: dict[str, Any] = {
         "object. Amounts are micros of the account currency (1,000,000 = one "
         "unit). With impression billing the bid is per impression, not per "
         "thousand: CPM / 1000. Omitting both strategy and max_bid_micros "
-        "selects automatic bidding. bid_multiplier_micros 1000000 = 1.0x."
+        "selects automatic bidding. A fixed bid is sent as strategy fixed_bid "
+        "with max_bid_micros; on click billing it reads back as "
+        "target_strategy target_cpc with target_micros. "
+        "bid_multiplier_micros 1000000 = 1.0x."
     ),
 }
 
@@ -302,7 +306,9 @@ _AD_GROUPS_UPDATE_BID = build_tool(
     "whole bidding_config object. Bids are micros of the account currency "
     "(1,000,000 = one unit); with impression billing the bid is per "
     "impression (CPM / 1000). Omitting both strategy and max_bid_micros "
-    "selects automatic bidding. The STRATEGY.md bid caps "
+    "selects automatic bidding. A fixed bid is sent as strategy fixed_bid "
+    "with max_bid_micros; on click billing it reads back as target_strategy "
+    "target_cpc with target_micros. The STRATEGY.md bid caps "
     "(max_cpc_bid_per_ad_group, max_bid_amount_per_ad_set) read "
     "max_bid_micros only: audience bid multipliers (up to 10x) and the "
     "strategies without a bid (automatic, maximize_*) are not bounded by "

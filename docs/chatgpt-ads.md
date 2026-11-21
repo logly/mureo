@@ -195,7 +195,10 @@ campaign-edit name could never be recognised as mureo's own budget change.
   1 to 128 letters, digits, `_` or `-`, and
   `bid_multiplier_micros`, 100000 to 10000000, where 1000000 is 1.0x).
   Omitting both `strategy` and `max_bid_micros` selects automatic bidding,
-  which responses report as `automated_bid`. With impression billing the bid
+  which responses report as `automated_bid` or, on a clicks campaign, as
+  `maximize_clicks`. A fixed bid reads back as `target_strategy`
+  (`target_cpc` with click billing) and `target_micros`, not as
+  `strategy` / `max_bid_micros`. With impression billing the bid
   is per impression, not per thousand: CPM / 1000.
 - **What the bid caps cover.** `max_cpc_bid_per_ad_group` and
   `max_bid_amount_per_ad_set` both read `max_bid_micros`, and nothing else:
@@ -574,7 +577,7 @@ the tool accepts:
 | `chatgpt_ads_campaigns_update` | the same tool with the prior value of each field the call set | no field's prior value passes the tool's check |
 | `chatgpt_ads_campaigns_update_budget` | the same tool with every prior budget amount that is not `null` | the prior budget holds neither amount, or any amount it holds fails the tool's check (a string, a float, 0 or another value below 1000000) |
 | `chatgpt_ads_ad_groups_update` | the same tool with the prior name | the prior name is missing or fails the tool's check |
-| `chatgpt_ads_ad_groups_update_bid` | the same tool with the prior bidding config | anything present in the prior config fails the tool's check: a `billing_event_type` other than `impression` or `click`, a strategy that is neither one the tool takes nor `automated_bid`, an unusable `max_bid_micros` or multiplier, or more than 1000 multipliers |
+| `chatgpt_ads_ad_groups_update_bid` | the same tool with the prior bidding config; a prior fixed bid (`target_strategy` / `target_micros`) as `fixed_bid` with the prior amount | anything present in the prior config fails the tool's check: a `billing_event_type` other than `impression` or `click`, a strategy that is neither one the tool takes nor `automated_bid`, an unusable `max_bid_micros`, `target_micros` or multiplier, or more than 1000 multipliers; or the config has a `target_strategy` mureo does not know (anything but `target_cpc` with click billing), carries both shapes (`target_*` with `strategy` or `max_bid_micros`), or has a key mureo does not know |
 | `chatgpt_ads_account_daily_spend_limit_set` | the same tool with the prior amount | there was no daily rule before (removing a limit is a different operation), more than one, or its amount fails the tool's check |
 
 For a campaign update, a field whose prior value fails the check is left out
@@ -585,9 +588,14 @@ objects, so a partial one would remove a limit or a multiplier. A budget
 reversal that sets a lower lifetime budget than the call did carries the
 caveat that the platform rejects a lifetime budget below the amount already
 spent. A prior `automated_bid` config is restored without `strategy` or
-`max_bid_micros`; a `null` value is treated as absent, and response-only keys
-are not restored. If the prior read fails or times out, the change goes ahead
-without a reversal; only the error's type is logged.
+`max_bid_micros`, and a prior fixed bid, which reads back as
+`target_strategy` `target_cpc` and `target_micros`, is restored as
+`fixed_bid` with `max_bid_micros` set to the prior amount. A config with a
+`target_strategy` mureo does not know, with both shapes, or with a key mureo
+does not know records no reversal: the platform replaces the whole object,
+so dropping or guessing a key would restore a different config. A `null`
+value is treated as absent. If the prior read fails or times out, the
+change goes ahead without a reversal; only the error's type is logged.
 
 Creates, archives and the image upload are recorded in `action_log` too, with
 no reversal (see [Undoing a create](#creating) and [Archiving](#archiving)).
@@ -928,6 +936,10 @@ account. These points are unverified:
   `automated_bid`, which a request expresses by omitting `strategy` and
   `max_bid_micros`. Whether sending that back restores the same config is
   unverified.
+- **Fixed bid with impression billing.** A fixed bid on click billing reads
+  back as `target_strategy` `target_cpc` with `target_micros`. What a fixed
+  bid on impression billing reads back as is unverified, so such a config
+  records no reversal.
 - **`expected_revision`.** How the platform answers when the revision has
   moved on since mureo read it, and whether an account with no daily rule
   accepts revision 0.
