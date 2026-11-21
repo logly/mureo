@@ -7,8 +7,8 @@ more dangerous option, not the safer one.
 
 What these tests pin:
 
-  - the reported shape end to end — LOGLY snapshots filed under ``logly_ads``
-    beside the bridge's real provider name ``logly_ads_context``, one ad
+  - the broken shape end to end — ACME snapshots filed under ``acme_ads``
+    beside the bridge's real provider name ``acme_ads_context``, one ad
     account, two entries — is repaired, and the repaired document no longer
     produces a ``duplicate_account`` conflict from ``mureo.web.reports``;
   - **planning changes nothing** (the dry run the CLI defaults to);
@@ -82,14 +82,14 @@ def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> No
     """Pin which plugin platforms the environment reports as installed.
 
     Same pin the #609 guard tests use, and for the same reason: the machine
-    that reported both issues has ``logly_ads_context`` and the LINE/Yahoo
+    that reported both issues has ``acme_ads_context`` and the LINE/Yahoo
     bridge installed, so an unpinned test would assert nothing.
     """
     entries = tuple(SimpleNamespace(name=name) for name in names)
     monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
 
 
-def _logly_totals(spend: float, fetched_at: str) -> dict[str, Any]:
+def _acme_totals(spend: float, fetched_at: str) -> dict[str, Any]:
     return {
         "spend": spend,
         "conversions": 12,
@@ -104,7 +104,7 @@ def _reported_document() -> dict[str, Any]:
         "version": "2",
         "last_synced_at": "2026-08-12T01:00:00+00:00",
         "platforms": {
-            "logly_ads": {
+            "acme_ads": {
                 "account_id": "1234567890",
                 "campaigns": [
                     {
@@ -113,13 +113,13 @@ def _reported_document() -> dict[str, Any]:
                         "status": "ENABLED",
                     }
                 ],
-                "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                "totals": _acme_totals(9000.0, "2026-08-01T03:00:00+00:00"),
                 "metrics_period": "LAST_30_DAYS",
                 "periods": {
-                    "LAST_30_DAYS": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00")
+                    "LAST_30_DAYS": _acme_totals(9000.0, "2026-08-01T03:00:00+00:00")
                 },
             },
-            "logly_ads_context": {
+            "acme_ads_context": {
                 "account_id": "1234567890",
                 "campaigns": [
                     {
@@ -128,10 +128,10 @@ def _reported_document() -> dict[str, Any]:
                         "status": "ENABLED",
                     }
                 ],
-                "totals": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00"),
+                "totals": _acme_totals(4500.0, "2026-08-12T03:00:00+00:00"),
                 "metrics_period": "LAST_30_DAYS",
                 "periods": {
-                    "LAST_30_DAYS": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00")
+                    "LAST_30_DAYS": _acme_totals(4500.0, "2026-08-12T03:00:00+00:00")
                 },
             },
         },
@@ -139,7 +139,7 @@ def _reported_document() -> dict[str, Any]:
             {
                 "timestamp": "2026-08-11T09:00:00+00:00",
                 "action": "update_budget",
-                "platform": "logly_ads_context",
+                "platform": "acme_ads_context",
             }
         ],
     }
@@ -173,8 +173,8 @@ class TestUnresolvableKeyDefinition:
     def test_an_installed_providers_name_is_resolvable(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
-        assert not is_unresolvable_platform_key("logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
+        assert not is_unresolvable_platform_key("acme_ads_context")
 
     def test_a_canonical_plugin_key_is_resolvable_uninstalled(
         self, monkeypatch: pytest.MonkeyPatch
@@ -184,14 +184,14 @@ class TestUnresolvableKeyDefinition:
         and must never be offered up for deletion here."""
         _pin_installed_platforms(monkeypatch)
         assert not is_unresolvable_platform_key(
-            "plugin:mureo-logly-bridge:logly_ads_context"
+            "plugin:mureo-acme-bridge:acme_ads_context"
         )
 
     def test_the_invented_key_is_unresolvable(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
-        assert is_unresolvable_platform_key("logly_ads")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
+        assert is_unresolvable_platform_key("acme_ads")
 
     def test_an_unreadable_environment_resolves_everything(
         self, monkeypatch: pytest.MonkeyPatch
@@ -200,31 +200,31 @@ class TestUnresolvableKeyDefinition:
         enumerate". #609 fails OPEN on it, and inheriting that here is what
         stops a broken install from proposing to delete every plugin entry."""
         monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: None)
-        assert not is_unresolvable_platform_key("logly_ads")
+        assert not is_unresolvable_platform_key("acme_ads")
 
 
 # ---------------------------------------------------------------------------
-# The reported incident, end to end
+# The invented-key duplicate, end to end
 # ---------------------------------------------------------------------------
 
 
-class TestTheLoglyIncident:
+class TestInventedKeyDuplicate:
     def test_the_document_is_repaired(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
-        before = read_state_file(path).platforms["logly_ads_context"]
+        before = read_state_file(path).platforms["acme_ads_context"]
 
         outcome = apply_state_file_repairs(path)
 
         assert outcome.changed is True
-        assert [r.entry.key for r in outcome.repairs] == ["logly_ads"]
+        assert [r.entry.key for r in outcome.repairs] == ["acme_ads"]
         doc = read_state_file(path)
-        assert set(doc.platforms) == {"logly_ads_context"}
+        assert set(doc.platforms) == {"acme_ads_context"}
         # Nothing summed, nothing moved: the surviving entry is what it was.
-        assert doc.platforms["logly_ads_context"] == before
+        assert doc.platforms["acme_ads_context"] == before
 
     def test_the_repaired_document_reports_no_duplicate_account(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -233,7 +233,7 @@ class TestTheLoglyIncident:
         asked of ``mureo.web.reports`` itself rather than re-derived here."""
         from mureo.web.reports import CONFLICT_DUPLICATE_ACCOUNT, build_report_summary
 
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
         ctx = default_runtime_context(workspace=tmp_path)
@@ -257,7 +257,7 @@ class TestTheLoglyIncident:
         """Including ``last_synced_at``: a repair is not a sync, and
         re-stamping it would make every other platform's stale figures read
         as just-synced (the #535 trap)."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
 
@@ -266,7 +266,7 @@ class TestTheLoglyIncident:
         doc = read_state_file(path)
         assert doc.last_synced_at == "2026-08-12T01:00:00+00:00"
         assert len(doc.action_log) == 1
-        assert doc.action_log[0].platform == "logly_ads_context"
+        assert doc.action_log[0].platform == "acme_ads_context"
 
     def test_the_repair_is_not_recorded_in_the_action_log(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -279,7 +279,7 @@ class TestTheLoglyIncident:
         dashboard's activity feed and in every ``--platform`` filter.
         Reversibility is the timestamped backup, which restores the exact
         prior document — strictly more than a rollback plan could offer."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
 
@@ -297,14 +297,14 @@ class TestPlanningChangesNothing:
     def test_planning_leaves_the_file_byte_identical(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
         before = path.read_bytes()
 
         repairs = plan_platform_key_repairs(read_state_file(path))
 
-        assert [r.entry.key for r in repairs] == ["logly_ads"]
+        assert [r.entry.key for r in repairs] == ["acme_ads"]
         assert path.read_bytes() == before
         assert _backups(path) == []
 
@@ -313,14 +313,14 @@ class TestPlanningChangesNothing:
     ) -> None:
         """The operator cannot read JSON, so the plan has to carry the facts
         they would otherwise have to open the file to see."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
 
         (repair,) = plan_platform_key_repairs(read_state_file(path))
 
         entry = repair.entry
-        assert entry.key == "logly_ads"
+        assert entry.key == "acme_ads"
         assert entry.resolvable is False
         assert entry.account_id == "1234567890"
         assert entry.campaign_count == 1
@@ -333,22 +333,22 @@ class TestPlanningChangesNothing:
         # And the entry the account is really stored under, so the operator
         # can see what survives.
         (other,) = repair.same_account
-        assert other.key == "logly_ads_context"
+        assert other.key == "acme_ads_context"
         assert other.resolvable is True
         assert other.totals_fetched_at == "2026-08-12T03:00:00+00:00"
 
     def test_drop_platform_entries_is_pure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
         doc = read_state_file(path)
 
-        repaired = drop_platform_entries(doc, ("logly_ads",))
+        repaired = drop_platform_entries(doc, ("acme_ads",))
 
-        assert set(repaired.platforms) == {"logly_ads_context"}
-        assert set(doc.platforms) == {"logly_ads", "logly_ads_context"}
+        assert set(repaired.platforms) == {"acme_ads_context"}
+        assert set(doc.platforms) == {"acme_ads", "acme_ads_context"}
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +360,7 @@ class TestBackup:
     def test_a_backup_of_the_pre_repair_document_exists(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
 
@@ -370,7 +370,7 @@ class TestBackup:
         assert outcome.backup.exists()
         assert _backups(path) == [outcome.backup]
         restored = json.loads(outcome.backup.read_text(encoding="utf-8"))
-        assert set(restored["platforms"]) == {"logly_ads", "logly_ads_context"}
+        assert set(restored["platforms"]) == {"acme_ads", "acme_ads_context"}
 
     def test_a_second_repair_does_not_clobber_the_first_backup(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -378,14 +378,14 @@ class TestBackup:
         """Timestamped, not a single rolling ``.bak``: a second run would
         otherwise overwrite the only copy of the pre-repair document with the
         already-repaired one."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
         first = apply_state_file_repairs(path)
 
         # Re-introduce a second bad key and repair again.
         payload = json.loads(path.read_text(encoding="utf-8"))
-        payload["platforms"]["logly_ads_v2"] = {"account_id": "1234567890"}
+        payload["platforms"]["acme_ads_v2"] = {"account_id": "1234567890"}
         _write(path, payload)
         second = apply_state_file_repairs(path)
 
@@ -397,13 +397,13 @@ class TestBackup:
     def test_no_backup_is_taken_when_there_is_nothing_to_repair(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
-                "platforms": {"logly_ads_context": {"account_id": "1234567890"}},
+                "platforms": {"acme_ads_context": {"account_id": "1234567890"}},
             },
         )
         before = path.read_bytes()
@@ -428,7 +428,7 @@ class TestScope:
         both keys name a platform, so which entry holds the true figures is a
         question about money that only the operator can answer. This repair
         does not widen into a general duplicate merger."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
@@ -436,7 +436,7 @@ class TestScope:
                 "version": "2",
                 "platforms": {
                     "google_ads": {"account_id": "1234567890"},
-                    "logly_ads_context": {"account_id": "1234567890"},
+                    "acme_ads_context": {"account_id": "1234567890"},
                 },
             },
         )
@@ -462,15 +462,15 @@ class TestScope:
         stored is still offered (it is an empty stub); one carrying figures is
         reported for the operator instead.
         """
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_context": {"account_id": "1234567890"},
-                    "logly_ads": {
+                    "acme_ads_context": {"account_id": "1234567890"},
+                    "acme_ads": {
                         "account_id": "",
                         "totals": {"spend": 10.0, "fetched_at": "2026-08-01T00:00:00Z"},
                     },
@@ -482,7 +482,7 @@ class TestScope:
         plan = plan_platform_keys(read_state_file(path))
         assert plan.repairs == ()
         (finding,) = plan.kept
-        assert finding.entry.key == "logly_ads"
+        assert finding.entry.key == "acme_ads"
         assert finding.entry.account_id == ""
         assert finding.reason == KEEP_CARRIES_FIGURES
         # The join cannot connect the two, so the finding claims no context.
@@ -494,27 +494,27 @@ class TestScope:
     def test_only_the_named_key_is_repaired(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1"},
-                    "logly_adz": {"account_id": "2"},
+                    "acme_ads": {"account_id": "1"},
+                    "acme_adz": {"account_id": "2"},
                 },
             },
         )
 
-        apply_state_file_repairs(path, keys=("logly_ads",))
+        apply_state_file_repairs(path, keys=("acme_ads",))
 
-        assert set(read_state_file(path).platforms) == {"logly_adz"}
+        assert set(read_state_file(path).platforms) == {"acme_adz"}
 
     def test_a_named_key_that_resolves_is_never_repaired(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
@@ -574,7 +574,7 @@ class TestWhatIsOfferedForRemoval:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
                         "campaigns": [
                             {
@@ -583,7 +583,7 @@ class TestWhatIsOfferedForRemoval:
                                 "status": "ENABLED",
                             }
                         ],
-                        "totals": _logly_totals(128000.0, "2026-08-13T23:10:00Z"),
+                        "totals": _acme_totals(128000.0, "2026-08-13T23:10:00Z"),
                         "metrics_period": "LAST_30_DAYS",
                     }
                 },
@@ -595,7 +595,7 @@ class TestWhatIsOfferedForRemoval:
 
         assert plan.repairs == ()
         (finding,) = plan.kept
-        assert finding.entry.key == "logly_ads_context"
+        assert finding.entry.key == "acme_ads_context"
         assert finding.reason == KEEP_CARRIES_FIGURES
         assert apply_state_file_repairs(path).changed is False
         assert path.read_bytes() == before
@@ -604,14 +604,14 @@ class TestWhatIsOfferedForRemoval:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The incident's own shape: same ad account, one key that resolves."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _reported_document())
 
         plan = plan_platform_keys(read_state_file(path))
 
         (repair,) = plan.repairs
-        assert repair.entry.key == "logly_ads"
+        assert repair.entry.key == "acme_ads"
         assert repair.reason == DROP_DUPLICATE
         assert plan.kept == ()
 
@@ -627,13 +627,13 @@ class TestWhatIsOfferedForRemoval:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
-                        "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                        "totals": _acme_totals(9000.0, "2026-08-01T03:00:00+00:00"),
                     },
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
-                        "totals": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00"),
+                        "totals": _acme_totals(4500.0, "2026-08-12T03:00:00+00:00"),
                     },
                 },
             },
@@ -656,13 +656,13 @@ class TestWhatIsOfferedForRemoval:
         path = tmp_path / "STATE.json"
         _write(
             path,
-            {"version": "2", "platforms": {"logly_ads": {"account_id": "1234567890"}}},
+            {"version": "2", "platforms": {"acme_ads": {"account_id": "1234567890"}}},
         )
 
         plan = plan_platform_keys(read_state_file(path))
 
         (repair,) = plan.repairs
-        assert repair.entry.key == "logly_ads"
+        assert repair.entry.key == "acme_ads"
         assert repair.reason == DROP_EMPTY_STUB
         apply_state_file_repairs(path)
         assert read_state_file(path).platforms == {}
@@ -673,15 +673,15 @@ class TestWhatIsOfferedForRemoval:
         """An empty ``account_id`` is not what makes a stub — an entry with an
         unknown id and real figures is NOT one — but it does not save an entry
         that stores nothing either."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_context": {"account_id": "1234567890"},
-                    "logly_ads": {"account_id": ""},
+                    "acme_ads_context": {"account_id": "1234567890"},
+                    "acme_ads": {"account_id": ""},
                 },
             },
         )
@@ -689,7 +689,7 @@ class TestWhatIsOfferedForRemoval:
         plan = plan_platform_keys(read_state_file(path))
 
         (repair,) = plan.repairs
-        assert repair.entry.key == "logly_ads"
+        assert repair.entry.key == "acme_ads"
         assert repair.reason == DROP_EMPTY_STUB
 
     def test_an_entry_that_only_carries_periods_is_not_a_stub(
@@ -702,7 +702,7 @@ class TestWhatIsOfferedForRemoval:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "",
                         "periods": {
                             "YESTERDAY": {
@@ -740,18 +740,18 @@ class TestOperatorDeclaredSettings:
     def test_an_entry_carrying_an_override_is_never_dropped(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "conversion_action_types": ["offsite_conversion.custom.90210"],
                     },
-                    "logly_ads_context": {"account_id": "1234567890"},
+                    "acme_ads_context": {"account_id": "1234567890"},
                 },
             },
         )
@@ -763,7 +763,7 @@ class TestOperatorDeclaredSettings:
         # back is the setting no sync restores.
         assert plan.repairs == ()
         (finding,) = plan.kept
-        assert finding.entry.key == "logly_ads"
+        assert finding.entry.key == "acme_ads"
         assert finding.reason == KEEP_CONVERSION_OVERRIDE
         assert apply_state_file_repairs(path).changed is False
         assert path.read_bytes() == before
@@ -773,14 +773,14 @@ class TestOperatorDeclaredSettings:
     ) -> None:
         """``PlatformEntryFacts`` is what the preview can print, so a field
         that is invisible there cannot be named before a confirmation."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "conversion_action_types": [
                             "offsite_conversion.custom.90210",
@@ -803,15 +803,15 @@ class TestOperatorDeclaredSettings:
     ) -> None:
         """The refusal is per entry, not per document: a stub beside it is
         still removed, and the declared allow-list is still there afterwards."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1234567890"},
-                    "logly_ads_context": {
+                    "acme_ads": {"account_id": "1234567890"},
+                    "acme_ads_context": {
                         "account_id": "1234567890",
                         "conversion_action_types": ["offsite_conversion.custom.90210"],
                     },
@@ -821,9 +821,9 @@ class TestOperatorDeclaredSettings:
 
         outcome = apply_state_file_repairs(path)
 
-        assert [r.entry.key for r in outcome.repairs] == ["logly_ads"]
+        assert [r.entry.key for r in outcome.repairs] == ["acme_ads"]
         doc = read_state_file(path)
-        assert doc.platforms["logly_ads_context"].conversion_action_types == (
+        assert doc.platforms["acme_ads_context"].conversion_action_types == (
             "offsite_conversion.custom.90210",
         )
 
@@ -863,7 +863,7 @@ class TestACollectionFailureNote:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
@@ -886,7 +886,7 @@ class TestACollectionFailureNote:
         path = tmp_path / "STATE.json"
         _write(
             path,
-            {"version": "2", "platforms": {"logly_ads": {"account_id": "1234567890"}}},
+            {"version": "2", "platforms": {"acme_ads": {"account_id": "1234567890"}}},
         )
 
         (repair,) = plan_platform_keys(read_state_file(path)).repairs
@@ -907,7 +907,7 @@ class TestACollectionFailureNote:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
@@ -923,7 +923,7 @@ class TestACollectionFailureNote:
 
         assert plan.repairs == ()
         (finding,) = plan.kept
-        assert finding.entry.key == "logly_ads"
+        assert finding.entry.key == "acme_ads"
         assert finding.reason == KEEP_CARRIES_FIGURES
         assert apply_state_file_repairs(path).changed is False
         assert path.read_bytes() == before
@@ -941,7 +941,7 @@ class TestACollectionFailureNote:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
@@ -969,9 +969,9 @@ class TestACollectionFailureNote:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
-                        "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                        "totals": _acme_totals(9000.0, "2026-08-01T03:00:00+00:00"),
                     }
                 },
             },
@@ -988,23 +988,23 @@ class TestACollectionFailureNote:
         """The note changes what "empty" means, not what a duplicate is: the
         record survives under the key the account is really stored under, and
         DROP_DUPLICATE never asked whether the entry was empty."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
+                    "acme_ads": {
                         "account_id": "1234567890",
                         "not_collected": {
                             "attempted_at": "2026-08-13T04:00:00+00:00",
                             "reason": "the access token expired",
                         },
                     },
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
-                        "totals": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00"),
+                        "totals": _acme_totals(4500.0, "2026-08-12T03:00:00+00:00"),
                     },
                 },
             },
@@ -1012,7 +1012,7 @@ class TestACollectionFailureNote:
 
         (repair,) = plan_platform_keys(read_state_file(path)).repairs
 
-        assert repair.entry.key == "logly_ads"
+        assert repair.entry.key == "acme_ads"
         assert repair.reason == DROP_DUPLICATE
 
 
@@ -1032,16 +1032,16 @@ class TestTheWritePathIsNotRefused:
         permissive."""
         from mureo.context.state import set_platform_metrics
 
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1234567890"},
+                    "acme_ads": {"account_id": "1234567890"},
                     "google_ads": {"account_id": "1234567890"},
-                    "logly_ads_context": {"account_id": "1234567890"},
+                    "acme_ads_context": {"account_id": "1234567890"},
                 },
             },
         )
@@ -1055,7 +1055,7 @@ class TestTheWritePathIsNotRefused:
         assert outcome.changed is True
         assert set(read_state_file(path).platforms) == {
             "google_ads",
-            "logly_ads_context",
+            "acme_ads_context",
         }
 
 
@@ -1074,14 +1074,14 @@ def _both_keys_resolve_document() -> dict[str, Any]:
     return {
         "version": "2",
         "platforms": {
-            "plugin:mureo-logly-bridge": {
+            "plugin:mureo-acme-bridge": {
                 "account_id": "1234567890",
-                "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                "totals": _acme_totals(9000.0, "2026-08-01T03:00:00+00:00"),
                 "metrics_period": "LAST_30_DAYS",
             },
-            "logly_ads_context": {
+            "acme_ads_context": {
                 "account_id": "1234567890",
-                "totals": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00"),
+                "totals": _acme_totals(4500.0, "2026-08-12T03:00:00+00:00"),
                 "metrics_period": "LAST_30_DAYS",
             },
         },
@@ -1101,32 +1101,32 @@ class TestAnExplicitlyChosenDuplicate:
     def test_the_named_duplicate_is_offered_and_repaired(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _both_keys_resolve_document())
 
         plan = plan_platform_keys(
             read_state_file(path),
-            keys=("plugin:mureo-logly-bridge",),
-            drop_duplicates=("plugin:mureo-logly-bridge",),
+            keys=("plugin:mureo-acme-bridge",),
+            drop_duplicates=("plugin:mureo-acme-bridge",),
         )
 
         (repair,) = plan.repairs
-        assert repair.entry.key == "plugin:mureo-logly-bridge"
+        assert repair.entry.key == "plugin:mureo-acme-bridge"
         assert repair.entry.resolvable is True
         assert repair.reason == DROP_CHOSEN_DUPLICATE
         # The evidence is the document's, not the machine's: the sibling that
         # holds the same ad account is named.
-        assert [facts.key for facts in repair.same_account] == ["logly_ads_context"]
+        assert [facts.key for facts in repair.same_account] == ["acme_ads_context"]
 
         outcome = apply_state_file_repairs(
             path,
-            keys=("plugin:mureo-logly-bridge",),
-            drop_duplicates=("plugin:mureo-logly-bridge",),
+            keys=("plugin:mureo-acme-bridge",),
+            drop_duplicates=("plugin:mureo-acme-bridge",),
         )
 
         assert outcome.changed is True
-        assert set(read_state_file(path).platforms) == {"logly_ads_context"}
+        assert set(read_state_file(path).platforms) == {"acme_ads_context"}
         # The backup still comes first.
         assert outcome.backup is not None
         assert _backups(path)
@@ -1137,7 +1137,7 @@ class TestAnExplicitlyChosenDuplicate:
         """Asked of ``mureo.web.reports`` itself: the card recovers."""
         from mureo.web.reports import CONFLICT_DUPLICATE_ACCOUNT, build_report_summary
 
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _both_keys_resolve_document())
         ctx = default_runtime_context(workspace=tmp_path)
@@ -1150,8 +1150,8 @@ class TestAnExplicitlyChosenDuplicate:
 
         apply_state_file_repairs(
             path,
-            keys=("plugin:mureo-logly-bridge",),
-            drop_duplicates=("plugin:mureo-logly-bridge",),
+            keys=("plugin:mureo-acme-bridge",),
+            drop_duplicates=("plugin:mureo-acme-bridge",),
         )
 
         kinds_after = [
@@ -1164,18 +1164,18 @@ class TestAnExplicitlyChosenDuplicate:
     ) -> None:
         """Drop, never merge — the same contract the #616 path has. Nothing is
         summed into the entry that stays."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _both_keys_resolve_document())
-        before = read_state_file(path).platforms["logly_ads_context"]
+        before = read_state_file(path).platforms["acme_ads_context"]
 
         apply_state_file_repairs(
             path,
-            keys=("plugin:mureo-logly-bridge",),
-            drop_duplicates=("plugin:mureo-logly-bridge",),
+            keys=("plugin:mureo-acme-bridge",),
+            drop_duplicates=("plugin:mureo-acme-bridge",),
         )
 
-        assert read_state_file(path).platforms["logly_ads_context"] == before
+        assert read_state_file(path).platforms["acme_ads_context"] == before
 
     def test_without_the_explicit_choice_nothing_changes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1183,7 +1183,7 @@ class TestAnExplicitlyChosenDuplicate:
         """Naming the key alone is not deciding: ``keys`` narrows the plan, it
         does not widen it. Silence here is what keeps mureo out of the
         operator's money question."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _both_keys_resolve_document())
         before = path.read_bytes()
@@ -1191,13 +1191,13 @@ class TestAnExplicitlyChosenDuplicate:
         assert plan_platform_keys(read_state_file(path)).repairs == ()
         assert (
             plan_platform_keys(
-                read_state_file(path), keys=("plugin:mureo-logly-bridge",)
+                read_state_file(path), keys=("plugin:mureo-acme-bridge",)
             ).repairs
             == ()
         )
         assert apply_state_file_repairs(path).changed is False
         assert (
-            apply_state_file_repairs(path, keys=("plugin:mureo-logly-bridge",)).changed
+            apply_state_file_repairs(path, keys=("plugin:mureo-acme-bridge",)).changed
             is False
         )
         assert path.read_bytes() == before
@@ -1207,7 +1207,7 @@ class TestAnExplicitlyChosenDuplicate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The dry run the CLI defaults to: same file, same mtime, no backup."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(path, _both_keys_resolve_document())
         before = path.read_bytes()
@@ -1215,8 +1215,8 @@ class TestAnExplicitlyChosenDuplicate:
 
         plan_platform_keys(
             read_state_file(path),
-            keys=("plugin:mureo-logly-bridge",),
-            drop_duplicates=("plugin:mureo-logly-bridge",),
+            keys=("plugin:mureo-acme-bridge",),
+            drop_duplicates=("plugin:mureo-acme-bridge",),
         )
 
         assert path.read_bytes() == before
@@ -1230,16 +1230,16 @@ class TestAnExplicitlyChosenDuplicate:
         command: without a sibling holding the same ad account, the document
         does not show the entry to be a duplicate at all, and the operator may
         simply have mistyped the key they meant."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         _write(
             path,
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_context": {
+                    "acme_ads_context": {
                         "account_id": "1234567890",
-                        "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                        "totals": _acme_totals(9000.0, "2026-08-01T03:00:00+00:00"),
                     },
                     "google_ads": {"account_id": "999"},
                 },
@@ -1249,19 +1249,19 @@ class TestAnExplicitlyChosenDuplicate:
 
         plan = plan_platform_keys(
             read_state_file(path),
-            keys=("logly_ads_context",),
-            drop_duplicates=("logly_ads_context",),
+            keys=("acme_ads_context",),
+            drop_duplicates=("acme_ads_context",),
         )
 
         assert plan.repairs == ()
         (finding,) = plan.kept
-        assert finding.entry.key == "logly_ads_context"
+        assert finding.entry.key == "acme_ads_context"
         assert finding.reason == KEEP_NOT_A_DUPLICATE
         assert (
             apply_state_file_repairs(
                 path,
-                keys=("logly_ads_context",),
-                drop_duplicates=("logly_ads_context",),
+                keys=("acme_ads_context",),
+                drop_duplicates=("acme_ads_context",),
             ).changed
             is False
         )
@@ -1303,10 +1303,10 @@ class TestAnExplicitlyChosenDuplicate:
     ) -> None:
         """#617 stands, named explicitly or not: no sync restores that
         allow-list, so dropping the entry loses it for good."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         payload = _both_keys_resolve_document()
-        payload["platforms"]["plugin:mureo-logly-bridge"]["conversion_action_types"] = [
+        payload["platforms"]["plugin:mureo-acme-bridge"]["conversion_action_types"] = [
             "offsite_conversion.custom.90210"
         ]
         _write(path, payload)
@@ -1314,8 +1314,8 @@ class TestAnExplicitlyChosenDuplicate:
 
         plan = plan_platform_keys(
             read_state_file(path),
-            keys=("plugin:mureo-logly-bridge",),
-            drop_duplicates=("plugin:mureo-logly-bridge",),
+            keys=("plugin:mureo-acme-bridge",),
+            drop_duplicates=("plugin:mureo-acme-bridge",),
         )
 
         assert plan.repairs == ()
@@ -1324,8 +1324,8 @@ class TestAnExplicitlyChosenDuplicate:
         assert (
             apply_state_file_repairs(
                 path,
-                keys=("plugin:mureo-logly-bridge",),
-                drop_duplicates=("plugin:mureo-logly-bridge",),
+                keys=("plugin:mureo-acme-bridge",),
+                drop_duplicates=("plugin:mureo-acme-bridge",),
             ).changed
             is False
         )
@@ -1336,7 +1336,7 @@ class TestAnExplicitlyChosenDuplicate:
     ) -> None:
         """The other half of the duplicate stays, and so does every entry the
         operator said nothing about."""
-        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        _pin_installed_platforms(monkeypatch, "acme_ads_context")
         path = tmp_path / "STATE.json"
         payload = _both_keys_resolve_document()
         payload["platforms"]["google_ads"] = {"account_id": "999"}
@@ -1344,11 +1344,11 @@ class TestAnExplicitlyChosenDuplicate:
 
         apply_state_file_repairs(
             path,
-            keys=("plugin:mureo-logly-bridge",),
-            drop_duplicates=("plugin:mureo-logly-bridge",),
+            keys=("plugin:mureo-acme-bridge",),
+            drop_duplicates=("plugin:mureo-acme-bridge",),
         )
 
         assert set(read_state_file(path).platforms) == {
-            "logly_ads_context",
+            "acme_ads_context",
             "google_ads",
         }

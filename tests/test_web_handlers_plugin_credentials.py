@@ -406,8 +406,8 @@ def _picker_entry(
     from mureo.core.providers import AccountOAuthConfig
 
     class _Broker:
-        name = "meta_ads_logly"
-        display_name = "Logly Meta"
+        name = "meta_ads_acme"
+        display_name = "Acme Meta"
         capabilities = frozenset()
         account_credential_fields = (
             AccountCredentialField(key="client_id", display_name="Client ID"),
@@ -431,8 +431,8 @@ def _picker_entry(
     if lister is not None:
         _Broker.list_oauth_accounts = staticmethod(lister)  # type: ignore[attr-defined]
     return ProviderEntry(
-        name="meta_ads_logly",
-        display_name="Logly Meta",
+        name="meta_ads_acme",
+        display_name="Acme Meta",
         capabilities=frozenset(),
         provider_class=_Broker,
         source_distribution=None,
@@ -443,7 +443,7 @@ def _store_token(credentials_path: Path) -> None:
     from mureo.core.secret_store import FilesystemSecretStore
 
     FilesystemSecretStore(path=credentials_path).save(
-        "meta_ads_logly", {"access_token": "TKN"}
+        "meta_ads_acme", {"access_token": "TKN"}
     )
 
 
@@ -457,7 +457,7 @@ def test_accounts_endpoint_returns_normalised_accounts(
         default_registry,
         "_entries",
         {
-            "meta_ads_logly": _picker_entry(
+            "meta_ads_acme": _picker_entry(
                 lambda creds: [
                     {"id": "act_1", "name": "Brand", "currency": "JPY"},
                     {"id": "act_2"},
@@ -466,7 +466,7 @@ def test_accounts_endpoint_returns_normalised_accounts(
         },
     )
     _store_token(credentials_path)
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 200
     # Extra keys the plugin returned travel all the way to the picker, and
     # an account the plugin gave no name for arrives as ``null`` (#746).
@@ -483,10 +483,10 @@ def test_accounts_endpoint_409_when_not_authenticated(
     monkeypatch.setattr(
         default_registry,
         "_entries",
-        {"meta_ads_logly": _picker_entry(lambda creds: [{"id": "act_1"}])},
+        {"meta_ads_acme": _picker_entry(lambda creds: [{"id": "act_1"}])},
     )
     # No token stored → 409 not_authenticated.
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 409
     assert body["error"] == "not_authenticated"
 
@@ -501,10 +501,10 @@ def test_accounts_endpoint_404_when_not_supported(
     monkeypatch.setattr(
         default_registry,
         "_entries",
-        {"meta_ads_logly": _picker_entry(None)},
+        {"meta_ads_acme": _picker_entry(None)},
     )
     _store_token(credentials_path)
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 404
     assert body["error"] == "accounts_not_supported"
 
@@ -528,10 +528,10 @@ def test_accounts_endpoint_502_when_hook_fails(
     monkeypatch.setattr(
         default_registry,
         "_entries",
-        {"meta_ads_logly": _picker_entry(_boom)},
+        {"meta_ads_acme": _picker_entry(_boom)},
     )
     _store_token(credentials_path)
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 502
     assert body["error"] == "account_listing_failed"
 

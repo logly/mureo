@@ -11,7 +11,7 @@ Two functions answer that question for the same key on the same machine:
   ``unrecognized_key`` signal.
 
 They drifted: #609 made a bare provider name an installed plugin registered
-(``logly_ads_context``) a valid write vocabulary and nothing taught the label
+(``acme_ads_context``) a valid write vocabulary and nothing taught the label
 path about it, so ``mureo repair platform-key --all`` reported every client
 ``Clean`` while the Reports view told the same operator, about the same entry,
 that mureo could not resolve its key.
@@ -21,9 +21,9 @@ So the test that matters is the **agreement** across every shape, not a test
 for the bare-name symptom — that is what would have caught #609 widening the
 write vocabulary without touching the read side.
 
-Every test here pins the entry-point set with a fake. The machine that
-reported this really has the LOGLY and LINE/Yahoo bridges installed, so a test
-leaning on the environment passes there and fails in CI.
+Every test here pins the entry-point set with a fake. A developer machine may
+have real bridges installed, so a test leaning on the environment passes there
+and fails in CI.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> No
     monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
 
 
-# Every platform-key shape mureo has, and whether a machine with the LOGLY and
+# Every platform-key shape mureo has, and whether a machine with the ACME and
 # LINE/Yahoo bridges installed can resolve it. One table, asked of both sides.
 _KEY_SHAPES: tuple[tuple[str, bool], ...] = (
     # built-ins, including the hosted connector with no entry point at all
@@ -64,14 +64,14 @@ _KEY_SHAPES: tuple[tuple[str, bool], ...] = (
     ("plugin:mureo-lineyahoo-bridge:yahoo_ads", True),
     ("plugin:not-installed-anywhere:some_ads", True),
     # the legacy short form (#481), still valid on read
-    ("plugin:mureo-logly-bridge", True),
+    ("plugin:mureo-acme-bridge", True),
     # a bare provider name an installed plugin registered (#609) — the shape
     # this issue is about
-    ("logly_ads_context", True),
+    ("acme_ads_context", True),
     ("yahoo_ads", True),
     # the invented key from the field: the bridge's provider is
-    # ``logly_ads_context``, so this one names nothing
-    ("logly_ads", False),
+    # ``acme_ads_context``, so this one names nothing
+    ("acme_ads", False),
     ("totally_made_up", False),
     # claims the plugin namespace without naming a platform
     ("plugin:", False),
@@ -91,7 +91,7 @@ def test_the_label_path_and_the_guard_agree_on_every_key_shape(
     two disagree, one surface warns an operator about a key another surface
     has just told them is fine.
     """
-    _pin_installed_platforms(monkeypatch, "logly_ads_context", "yahoo_ads")
+    _pin_installed_platforms(monkeypatch, "acme_ads_context", "yahoo_ads")
 
     labelled = platform_display_name(key) != key
     accepted = not is_unresolvable_platform_key(key)
@@ -108,10 +108,10 @@ def test_the_reported_entry_is_labelled_and_not_flagged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The symptom itself: the key the guard accepted was reported unresolvable."""
-    _pin_installed_platforms(monkeypatch, "logly_ads_context")
+    _pin_installed_platforms(monkeypatch, "acme_ads_context")
 
-    reject_unknown_platform_key("logly_ads_context")  # accepted since #609
-    assert platform_display_name("logly_ads_context") == "Logly Ads Context (plugin)"
+    reject_unknown_platform_key("acme_ads_context")  # accepted since #609
+    assert platform_display_name("acme_ads_context") == "Acme Ads Context (plugin)"
 
 
 def test_the_bare_form_reads_as_the_canonical_key_does(
@@ -124,11 +124,11 @@ def test_the_bare_form_reads_as_the_canonical_key_does(
     same platform. Two labels for one platform on one dashboard would be a
     fresh inconsistency in place of the one being fixed.
     """
-    _pin_installed_platforms(monkeypatch, "logly_ads_context", "yahoo_ads")
+    _pin_installed_platforms(monkeypatch, "acme_ads_context", "yahoo_ads")
 
     assert platform_display_name(
-        "plugin:mureo-logly-bridge:logly_ads_context"
-    ) == platform_display_name("logly_ads_context")
+        "plugin:mureo-acme-bridge:acme_ads_context"
+    ) == platform_display_name("acme_ads_context")
     assert platform_display_name("yahoo_ads") == "Yahoo Ads (plugin)"
 
 
@@ -144,7 +144,7 @@ def test_the_label_path_fails_open_exactly_as_the_guard_does(
     """
     monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: None)
 
-    for key in ("logly_ads_context", "some_bridge_platform"):
+    for key in ("acme_ads_context", "some_bridge_platform"):
         assert not is_unresolvable_platform_key(key)
         assert platform_display_name(key) != key
 
@@ -186,15 +186,13 @@ def test_the_entry_points_are_enumerated_once(monkeypatch: pytest.MonkeyPatch) -
     def _enumerate() -> tuple[SimpleNamespace, ...]:
         nonlocal calls
         calls += 1
-        return (SimpleNamespace(name="logly_ads_context"),)
+        return (SimpleNamespace(name="acme_ads_context"),)
 
     monkeypatch.setattr(platform_guards, "_provider_entry_points", _enumerate)
 
     for _ in range(5):
-        assert (
-            platform_display_name("logly_ads_context") == "Logly Ads Context (plugin)"
-        )
-        reject_unknown_platform_key("logly_ads_context")
+        assert platform_display_name("acme_ads_context") == "Acme Ads Context (plugin)"
+        reject_unknown_platform_key("acme_ads_context")
 
     assert calls == 1
 
@@ -208,10 +206,10 @@ def test_the_cache_cannot_serve_a_stale_answer(
     how every test installs a plugin — can never be served the previous
     answer, whatever order the suite runs in.
     """
-    _pin_installed_platforms(monkeypatch, "logly_ads_context")
+    _pin_installed_platforms(monkeypatch, "acme_ads_context")
     assert platform_display_name("yahoo_ads") == "yahoo_ads"
 
-    _pin_installed_platforms(monkeypatch, "logly_ads_context", "yahoo_ads")
+    _pin_installed_platforms(monkeypatch, "acme_ads_context", "yahoo_ads")
 
     assert platform_display_name("yahoo_ads") == "Yahoo Ads (plugin)"
     assert not is_unresolvable_platform_key("yahoo_ads")
@@ -227,11 +225,11 @@ def test_a_failed_enumeration_is_never_cached(
     """
     outcomes: list[tuple[SimpleNamespace, ...] | None] = [
         None,
-        (SimpleNamespace(name="logly_ads_context"),),
+        (SimpleNamespace(name="acme_ads_context"),),
     ]
     monkeypatch.setattr(
         platform_guards, "_provider_entry_points", lambda: outcomes.pop(0)
     )
 
     assert installed_platform_names() is None
-    assert installed_platform_names() == frozenset({"logly_ads_context"})
+    assert installed_platform_names() == frozenset({"acme_ads_context"})

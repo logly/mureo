@@ -116,7 +116,7 @@ def test_card_keys_exist_in_both_locales() -> None:
 class TestAccountPickerIsOptional:
     """The ad account is optional. Without a placeholder the browser silently
     pre-selects the first probed account, so Save persists an account the
-    operator never chose — inert noise under mureo-agency (accounts are
+    operator never chose — inert noise under a multi-account backend (accounts are
     assigned per client in the Clients menu) and a silent-wrong-selection
     hazard in plain OSS. See ``tests/test_web_meta_token.py`` for the
     server-side half of the contract (``account_id: null`` -> saved, no key).

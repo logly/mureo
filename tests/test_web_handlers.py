@@ -190,7 +190,7 @@ class TestServeAbout:
             "mureo": {"name": "mureo", "version": "9.9.9"},
             "packages": [
                 {"name": "mureo", "version": "9.9.9"},
-                {"name": "mureo-agency", "version": "0.1.12"},
+                {"name": "mureo-acme-backend", "version": "0.1.12"},
             ],
         }
         with patch(
@@ -2582,7 +2582,7 @@ class TestPostUpgrade:
         fake_result = {
             "status": "ok",
             "returncode": 0,
-            "packages": ["mureo", "mureo-agency"],
+            "packages": ["mureo", "mureo-acme-backend"],
             "output": "Successfully installed",
         }
         with (

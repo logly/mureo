@@ -380,8 +380,8 @@ def _picker_entry() -> ProviderEntry:
     from mureo.core.providers import AccountOAuthConfig
 
     class _Broker:
-        name = "meta_ads_logly"
-        display_name = "Logly Meta"
+        name = "meta_ads_acme"
+        display_name = "Acme Meta"
         capabilities = frozenset()
         account_credential_fields = (
             AccountCredentialField(key="client_id", display_name="Client ID"),
@@ -403,8 +403,8 @@ def _picker_entry() -> ProviderEntry:
         )
 
     return ProviderEntry(
-        name="meta_ads_logly",
-        display_name="Logly Meta",
+        name="meta_ads_acme",
+        display_name="Acme Meta",
         capabilities=frozenset(),
         provider_class=_Broker,
         source_distribution=None,
@@ -429,7 +429,7 @@ def test_resolve_scope_hides_picker_field_when_multi_account(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        default_registry, "_entries", {"meta_ads_logly": _picker_entry()}
+        default_registry, "_entries", {"meta_ads_acme": _picker_entry()}
     )
     handler = _bare_handler(home=None)
     with (
@@ -440,8 +440,8 @@ def test_resolve_scope_hides_picker_field_when_multi_account(
     ):
         scope = handler._resolve_field_scope()
     assert scope is not None
-    assert "account_id" not in scope["meta_ads_logly"]
-    assert "client_id" in scope["meta_ads_logly"]
+    assert "account_id" not in scope["meta_ads_acme"]
+    assert "client_id" in scope["meta_ads_acme"]
 
 
 @pytest.mark.unit
@@ -451,10 +451,10 @@ def test_resolve_scope_backend_overrides_auto_picker_hide(
     """An explicit backend scope for the same provider wins — it is the more
     specific authority — so the auto picker-hide does not override it."""
     monkeypatch.setattr(
-        default_registry, "_entries", {"meta_ads_logly": _picker_entry()}
+        default_registry, "_entries", {"meta_ads_acme": _picker_entry()}
     )
     handler = _bare_handler(home=None)
-    backend = {"meta_ads_logly": frozenset({"client_id"})}
+    backend = {"meta_ads_acme": frozenset({"client_id"})}
     with (
         patch("mureo.web.handlers.runtime_multi_account_auth", return_value=True),
         patch(
@@ -463,7 +463,7 @@ def test_resolve_scope_backend_overrides_auto_picker_hide(
         ),
     ):
         scope = handler._resolve_field_scope()
-    assert scope["meta_ads_logly"] == frozenset({"client_id"})
+    assert scope["meta_ads_acme"] == frozenset({"client_id"})
 
 
 @pytest.mark.unit
@@ -471,7 +471,7 @@ def test_resolve_scope_unchanged_when_not_multi_account(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        default_registry, "_entries", {"meta_ads_logly": _picker_entry()}
+        default_registry, "_entries", {"meta_ads_acme": _picker_entry()}
     )
     handler = _bare_handler(home=None)
     with (

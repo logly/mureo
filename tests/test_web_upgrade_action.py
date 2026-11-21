@@ -36,7 +36,7 @@ def _completed(
 class TestRunUpgradeAll:
     def test_success_returncode_zero_reports_ok(self) -> None:
         """A zero pip exit → ``ok`` with the server-derived target list."""
-        targets = ["mureo", "mureo-agency"]
+        targets = ["mureo", "mureo-acme-backend"]
         with (
             patch(
                 "mureo.web.upgrade_action.discover_all_mureo_packages",
@@ -100,7 +100,7 @@ class TestRunUpgradeAll:
         with (
             patch(
                 "mureo.web.upgrade_action.discover_all_mureo_packages",
-                return_value=["mureo", "mureo-logly-bridge"],
+                return_value=["mureo", "mureo-acme-bridge"],
             ) as mock_discover,
             patch(
                 "mureo.web.upgrade_action.subprocess.run",
@@ -115,8 +115,8 @@ class TestRunUpgradeAll:
         # The pip command's targets come straight from discovery, after the
         # ``--`` sentinel — nothing else can be injected.
         assert cmd[1:6] == ["-m", "pip", "install", "--upgrade", "--"]
-        assert cmd[6:] == ["mureo", "mureo-logly-bridge"]
-        assert result["packages"] == ["mureo", "mureo-logly-bridge"]
+        assert cmd[6:] == ["mureo", "mureo-acme-bridge"]
+        assert result["packages"] == ["mureo", "mureo-acme-bridge"]
         # Decode pip output as UTF-8, not the locale codec (cp932 on a
         # Japanese Windows) — otherwise the upgrade raises UnicodeDecodeError.
         # Both pip runs (self-upgrade and package install) do this.
@@ -212,7 +212,7 @@ class TestRunUpgradeAll:
         with (
             patch(
                 "mureo.web.upgrade_action.discover_all_mureo_packages",
-                return_value=["mureo-agency"],
+                return_value=["mureo-acme-backend"],
             ),
             patch(
                 "mureo.web.upgrade_action.subprocess.run",
@@ -220,9 +220,9 @@ class TestRunUpgradeAll:
             ) as mock_run,
         ):
             result = run_upgrade_all()
-        assert result["packages"] == ["mureo", "mureo-agency"]
+        assert result["packages"] == ["mureo", "mureo-acme-backend"]
         install_cmds = [c.args[0] for c in mock_run.call_args_list if "--" in c.args[0]]
-        assert install_cmds[0][6:] == ["mureo", "mureo-agency"]
+        assert install_cmds[0][6:] == ["mureo", "mureo-acme-backend"]
 
 
 _SELF_UPGRADE_CMD = [sys.executable, "-m", "pip", "install", "--upgrade", "pip"]

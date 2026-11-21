@@ -218,7 +218,7 @@ class TestLifecycleInvocation:
 @pytest.mark.unit
 class TestDiscoveryCapturesHooks:
     def _discover_with(self, monkeypatch: pytest.MonkeyPatch, ext: object) -> Any:
-        ep = _FakeEP("agency", ext, dist_name="mureo-agency")
+        ep = _FakeEP("agency", ext, dist_name="mureo-acme-backend")
 
         def fake_entry_points(*, group: str) -> list[Any]:
             from mureo.web.extensions import WEB_EXTENSIONS_ENTRY_POINT_GROUP

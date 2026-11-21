@@ -131,7 +131,7 @@ class TestCollectAboutInfo:
 
     def test_deduplicates_distributions_across_groups(self) -> None:
         """One distribution contributing to several groups appears once."""
-        dist = _FakeDist("mureo-agency", "0.1.12")
+        dist = _FakeDist("mureo-acme-backend", "0.1.12")
         by_group = {
             "mureo.providers": (_FakeEntryPoint(dist=dist),),
             "mureo.runtime_context_factory": (_FakeEntryPoint(dist=dist),),
@@ -143,7 +143,7 @@ class TestCollectAboutInfo:
         ):
             info = collect_about_info()
         names = [pkg["name"] for pkg in info["packages"]]
-        assert names == ["mureo", "mureo-agency"]
+        assert names == ["mureo", "mureo-acme-backend"]
 
     def test_packages_sorted_by_distribution_name(self) -> None:
         by_group = {
@@ -465,12 +465,12 @@ class TestCollectAboutInfo:
     def test_every_updater_package_appears_exactly_once(self) -> None:
         """Property of #365: every name the updater discovers is listed here
         exactly once (⊆ guarantee), regardless of entry-point registration."""
-        updater_set = ["mureo", "mureo-agency", "mureo-example-skills", "mureo-x"]
+        updater_set = ["mureo", "mureo-acme-backend", "mureo-example-skills", "mureo-x"]
         by_group = {
             # Only one of them also registers an entry point — the rest are
             # name-prefix-only, exactly the #365 gap.
             "mureo.providers": (
-                _FakeEntryPoint(dist=_FakeDist("mureo-agency", "0.1.0")),
+                _FakeEntryPoint(dist=_FakeDist("mureo-acme-backend", "0.1.0")),
             ),
         }
         versions = {name: "1.0.0" for name in updater_set}
