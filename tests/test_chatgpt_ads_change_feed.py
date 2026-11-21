@@ -96,6 +96,22 @@ def _map(row: object) -> Any:
     return _row_to_change(row, START, END)
 
 
+#: A pause as the audit log answers it: every field of the resource is a key,
+#: and the ones the entry did not change are null. More than 20 null keys come
+#: before ``status``, and they include a budget and a bid field.
+_PAUSE_CHANGES: dict[str, Any] = {
+    "top_tier": None,
+    "project_id": None,
+    "daily_budget_micros": None,
+    "bidding_config": None,
+    **{f"field_{i}": None for i in range(25)},
+    "status": {"before": {"type": "active"}, "after": {"type": "paused"}},
+    "obj_type": "Ad",
+    "lifetime_budget_micros": None,
+    "archived": None,
+}
+
+
 def _rows(count: int, start: int = 0) -> list[dict[str, Any]]:
     return [_row(id=f"alog_{i}", ts=TS + i) for i in range(start, start + count)]
 
@@ -326,6 +342,38 @@ class TestToken:
         assert change is not None
         assert MAX_CHANGED_FIELDS == 20
         assert change.changed_fields == tuple(f"field_{i}" for i in range(20))
+
+    def test_null_keys_are_not_changed_fields(self) -> None:
+        """The audit log lists every field and leaves unchanged ones null (#1026)."""
+        change = _map(_row(changes=_PAUSE_CHANGES))
+        assert change is not None
+        assert change.changed_fields == ("status",)
+
+    def test_a_create_records_only_the_set_fields_in_row_order(self) -> None:
+        changes = {
+            "top_tier": None,
+            "project_id": None,
+            "daily_budget_micros": {"before": None, "after": 8000000000},
+            "bidding_config": None,
+            "start_time": {"before": None, "after": "2026-01-01T00:00:00Z"},
+            "status": {"before": None, "after": {"status": "active"}},
+            "obj_type": "Campaign",
+            "name": {"before": None, "after": "Example"},
+        }
+        change = _map(_row(changes=changes))
+        assert change is not None
+        assert change.changed_fields == (
+            "daily_budget_micros",
+            "start_time",
+            "status",
+            "name",
+        )
+
+    def test_a_row_of_only_null_keys_names_no_field(self) -> None:
+        changes = {"top_tier": None, "status": None, "name": None}
+        change = _map(_row(changes=changes))
+        assert change is not None
+        assert change.changed_fields == ()
 
     def test_a_huge_changes_object_yields_twenty(self) -> None:
         change = _map(_row(changes={f"k{i}": {} for i in range(20_000)}))
@@ -688,6 +736,12 @@ class TestAttribution:
     ) -> None:
         verdict = _verdict(tmp_path, _entry(tool, arguments), row)
         assert verdict is ImportVerdict.ATTRIBUTED_TO_MUREO
+
+    def test_a_null_padded_pause_is_a_status_change(self, tmp_path: Path) -> None:
+        """Null keys for the budget and the bid do not make a pause two kinds."""
+        entry = _entry("chatgpt_ads_ads_pause", {"ad_id": "ad_1"})
+        row = {**_AD_ROW, "changes": _PAUSE_CHANGES}
+        assert _verdict(tmp_path, entry, row) is ImportVerdict.ATTRIBUTED_TO_MUREO
 
     @pytest.mark.parametrize(
         ("tool", "arguments", "row"),
