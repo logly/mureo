@@ -166,7 +166,8 @@ def _cli_tree() -> dict[str, CommandTree]:
 
 def _shipped_docs() -> list[str]:
     docs = sorted(
-        str(path.relative_to(_REPO_ROOT)) for path in (_REPO_ROOT / "docs").glob("*.md")
+        path.relative_to(_REPO_ROOT).as_posix()
+        for path in (_REPO_ROOT / "docs").glob("*.md")
     )
     return [*_TOP_LEVEL_DOCS, *docs]
 
