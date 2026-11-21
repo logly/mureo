@@ -40,13 +40,13 @@ Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラ
 
 ## mureoとは
 
-mureo は、**AI 広告運用のための、ローカルで動く制御基盤（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告、Meta 広告、Amazon 広告、TikTok 広告、Search Console、GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生できる監査ログに残ります。
+mureo は、**AI 広告運用のための、ローカルで動く制御基盤（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告、Meta 広告、Amazon 広告、TikTok 広告、ChatGPT 広告、Search Console、GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生できる監査ログに残ります。
 
-mureo は Google 広告、Meta 広告、Search Console の接続を自前で同梱しており、各プラットフォームが公式 MCP を公開すればそれをドライバとして利用します（TikTok の公式 MCP には対応済みで、**Amazon 広告（公式 MCP ブリッジ）** は mureo が中継するため認証情報がホストの MCP 設定に入りません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
+mureo は Google 広告、Meta 広告、Search Console の接続と、ChatGPT 広告のプロバイダ（[docs/chatgpt-ads.ja.md](docs/chatgpt-ads.ja.md)）を同梱しており、各プラットフォームが公式 MCP を公開すればそれをドライバとして利用します（TikTok の公式 MCP には対応済みで、**Amazon 広告（公式 MCP ブリッジ）** は mureo が中継するため認証情報がホストの MCP 設定に入りません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
 
 - **戦略準拠**：すべての判断が `STRATEGY.md`（ペルソナ、USP、ブランドボイス、目標）を読み込む
 - **セーフティゲート**：rollback allow-list、GAQL ガード、BYOD は既定で read-only、認証情報ガード、プラットフォーム別スロットリング
-- **クロスプラットフォーム**：Google 広告 / Meta 広告 / Amazon 広告 / TikTok 広告 / Search Console / GA4 を 1 つのワークフローで
+- **クロスプラットフォーム**：Google 広告 / Meta 広告 / Amazon 広告 / TikTok 広告 / ChatGPT 広告 / Search Console / GA4 を 1 つのワークフローで
 - **監査可能**：追記専用の action log、rollback 対応。さらに全ツール呼び出しとその結果を記録する journal（`mureo journal`）
 - **ローカルファースト**：認証情報はお手元のPCから出ない
 - **学習可能**：`/learn` でアカウント固有のナレッジを継続的に蓄積
@@ -141,13 +141,13 @@ Claude 系のホスト（Claude Code / Claude Desktop）は `mureo configure` �
 
 ### 媒体横断の分析
 
-Google広告、Meta広告、Amazon広告、TikTok広告、Search Console、GA4を1つのワークフローでまとめて処理します。
+Google広告、Meta広告、Amazon広告、TikTok広告、ChatGPT広告、Search Console、GA4を1つのワークフローでまとめて処理します。
 
 - `/daily-check`：全媒体の配信状況、広告パフォーマンス、自然検索のトレンド、サイト内行動を一括取得し、相関させて1つのレポートにまとめます。
 - `/search-term-cleanup`：有料キーワードと自然検索の順位を突き合わせ、無駄な重複出稿を洗い出します。
 - `/competitive-scan`：オークション分析と自然検索の順位データを統合して、競合の全体像を把握します。
 
-設定済みの媒体はエージェントが自動検出します。後からMeta広告、Amazon広告、TikTok広告を追加しても、全コマンドがそのまま対応します。
+設定済みの媒体はエージェントが自動検出します。後からMeta広告、Amazon広告、TikTok広告、ChatGPT広告を追加しても、全コマンドがそのまま対応します。
 
 ### 広告運用の専門知識
 
@@ -180,7 +180,7 @@ AIエージェントに広告アカウントを任せる以上、認証情報の
 - **異常の自動検知**：`mureo/analysis/anomaly_detector.py` が action_log の履歴から中央値で基準値を作り、いまのキャンペーン指標と比べて「支出がゼロ」「CPA が跳ねた」「CTR が落ちた」を優先度つきで通知します。サンプル数が少ない日は単日のノイズとして扱い、誤検知を抑えます。エージェントは MCP ツール `analysis_anomalies_check` から呼び出せます。`state_file` 引数は MCP サーバの作業ディレクトリ配下にサンドボックスされ、`..` による親ディレクトリ越えや、サンドボックス外を指すシンボリックリンクは拒否されます。これにより、プロンプトインジェクションされたエージェントが攻撃者が用意した別の `STATE.json` を読み込ませることはできません。
 - **ロールバック（許可リスト制）**：`mureo/rollback/` が action_log に記録された `reversible_params` を解釈して、取り消しプランを組み立てます。対象にできる操作はあらかじめ許可リストに登録したものだけです。`.delete` / `.remove` / `.transfer` など破壊的なメソッドや、想定外のパラメータキーは拒否されるので、乗っ取られたエージェントが「取り消し」に見せかけて危険な操作を仕込むことはできません。`mureo rollback list` / `show` で実行前に内容を確認でき、実行は MCP ツール `rollback_apply` として提供されます。apply は通常の操作と同じハンドラ経由でディスパッチされるため、認証、レート制限、入力検証のゲートをそのまま通ります。`confirm=true`（真偽値の `True`）を明示的に渡す必要があり、成功すると `rollback_of=<index>` タグ付きの追記専用ログが残ります。同じ index に対する二度目の apply は拒否され、`rollback.*` へのツール再帰も拒否されます。
 - **状態データの不変性**：`StateDocument` や `ActionLogEntry`、`RollbackPlan` など状態を表すクラスはすべて `frozen=True` の dataclass です。エージェントが自分で書いた記録を後から書き換えることはできません。
-- **認証情報はローカルのみ**：トークンは `~/.mureo/credentials.json` か環境変数から読むだけで、送信先は Google Ads / Meta / Search Console の公式 API に限定しています。mureo 側はテレメトリを一切送りません。
+- **認証情報はローカルのみ**：トークンは `~/.mureo/credentials.json` か環境変数から読むだけで、送信先はその認証情報が属するサービス（各広告プラットフォームの公式 API と、Creative Studio に設定した画像生成 API）に限定しています。mureo 側はテレメトリを一切送りません。
 
 脅威モデルと脆弱性報告の手順は [SECURITY.md](SECURITY.md) を参照してください。
 
@@ -315,9 +315,9 @@ mureo auth check-meta      # Meta広告の認証情報を表示（マスク済�
 
 **Amazon 広告**は、Amazon の公式 MCP を **mureo が中継（ブリッジ）** する形で対応しています。ホストに直接登録するのではなく、`Claude → ローカルの mureo MCP → Amazon のホスト型 MCP エンドポイント` という経路になります。Login with Amazon の認証情報は `~/.mureo/credentials.json` の `amazon_ads` セクション（`mureo configure` の接続先の認証情報にある **Amazon Ads** タブ、または `AMAZON_ADS_*` 環境変数で設定）に保存され、ホストの MCP 設定には入りません。短命なアクセストークンの発行と自動更新は mureo が行います。初回に `mureo amazon refresh-manifest` を一度実行してローカルのツールマニフェストを作り、MCP サーバーを再起動すると、Amazon 側のツール名（`campaign_management-*`、`account_management-*`）がそのまま現れ、組み込みプラットフォームと同じように監査・スロットリング・戦略ゲートの対象になります。変更操作は `platform=plugin:mureo-amazon-ads-bridge` として action log に記録されます。mureo ネイティブの詳細分析（異常検知の基準値、RSA 監査）は Amazon にはまだ用意されていないため、Amazon の分析結果は参考情報として扱ってください。**[Amazon 広告ガイド →](docs/amazon-ads.ja.md)**
 
-**ChatGPT 広告**は、mureo に同梱のプロバイダが OpenAI の Advertiser API を通じて読み取り、変更します。広告アカウント、利用上限、キャンペーン、広告グループ、広告、インサイト、変更履歴を読む 10 個のツールと、一時停止・再開、名前、配信期間、予算、入札、アカウントの 1 日の利用上限を変更する 11 個のツールがあり、変更はそれぞれ取り消し操作とともに `action_log` に記録されます。さらに、キャンペーン・広告グループ・広告の作成（常に一時停止の状態）とアーカイブ、画像アップロード、広告のプレビュー、地域の検索のツールがあります（作成・アーカイブ・アップロードは取り消し操作なしで記録されます）。さらに、カスタムオーディエンスの作成とローカルファイルからのメンバー追加・削除（メールアドレスと電話番号は端末上でハッシュ化されます）、ピクセルとコンバージョンイベントの設定、コンバージョンのレポートのツールがあります（オーディエンス・ピクセル・イベントの作成とメンバーの変更は取り消し操作なしで記録されます）。Ads Manager の設定ページでご自身の広告アカウント用の Ads API キーを作成し（1 つのキーで読めるアカウントは 1 つです）、`mureo configure` の **ChatGPT Ads** カードに貼り付けるか、`CHATGPT_ADS_API_KEY` に設定します。`MUREO_DISABLE_CHATGPT_ADS=1` を設定するとこのプロバイダを無効にできます。**[ChatGPT Ads ガイド →](docs/chatgpt-ads.md)**（英語）
+**ChatGPT 広告**は、mureo に同梱のプロバイダが OpenAI の Advertiser API を通じて読み取り、変更します。広告アカウント、利用上限、キャンペーン、広告グループ、広告、インサイト、変更履歴を読む 10 個のツールと、一時停止・再開、名前、配信期間、予算、入札、アカウントの 1 日の利用上限を変更する 11 個のツールがあり、変更はそれぞれ取り消し操作とともに `action_log` に記録されます。さらに、キャンペーン・広告グループ・広告の作成（常に一時停止の状態）とアーカイブ、画像アップロード、広告のプレビュー、地域の検索のツールがあります（作成・アーカイブ・アップロードは取り消し操作なしで記録されます）。さらに、カスタムオーディエンスの作成とローカルファイルからのメンバー追加・削除（メールアドレスと電話番号は端末上でハッシュ化されます）、ピクセルとコンバージョンイベントの設定、コンバージョンのレポートのツールがあります（オーディエンス・ピクセル・イベントの作成とメンバーの変更は取り消し操作なしで記録されます）。Ads Manager の設定ページでご自身の広告アカウント用の Ads API キーを作成し（1 つのキーで読めるアカウントは 1 つです）、`mureo configure` の **ChatGPT Ads** カードに貼り付けるか、`CHATGPT_ADS_API_KEY` に設定します。`MUREO_DISABLE_CHATGPT_ADS=1` を設定するとこのプロバイダを無効にできます。**[ChatGPT Ads ガイド →](docs/chatgpt-ads.ja.md)**
 
-**TikTok 広告**は、TikTok の公式ホスト型 MCP（TikTok for Business MCP Server）経由で対応しています。mureo は公式プロバイダ `tiktok-ads-official` として同梱しており、`mureo configure` のダッシュボードまたは `mureo providers add` で追加し、初回接続時にブラウザで TikTok for Business アカウントにサインインして認可するだけです（Developer Token は不要）。接続後は `tiktok_ads` が他媒体と同格のプラットフォームとして扱われ、`/daily-check` やレポートに含まれ、承認済みの変更は action log に記録されます。mureo ネイティブの分析（異常検知の基準値、RSA 監査）は引き続き Google / Meta 向けです。
+**TikTok 広告**は、TikTok の公式ホスト型 MCP（TikTok for Business MCP Server）経由で対応しています。mureo は公式プロバイダ `tiktok-ads-official` として同梱しており、mureo はローカルには登録しません。`mureo configure` のダッシュボードと `mureo providers add tiktok-ads-official` は、Claude.ai のカスタムコネクタとして追加する手順を表示します（Claude の有料プランが必要です）。追加後、ブラウザで TikTok for Business アカウントにサインインして認可します（Developer Token は不要）。接続後は `tiktok_ads` が他媒体と同格のプラットフォームとして扱われ、`/daily-check` やレポートに含まれ、承認済みの変更は action log に記録されます。mureo ネイティブの分析（異常検知の基準値、RSA 監査）は引き続き Google / Meta 向けです。
 
 GA4 の MCP サーバー（例: [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp)）を mureo と併設すると、ワークフローコマンドが GA4 のデータ（CVR、ユーザー行動、LP パフォーマンス）も取り込みます。GA4 はオプションで、なくても全コマンドが動作します。mureo は同じセッション内の任意の MCP サーバーと共存でき、利用できるデータをワークフローが自動的に取り込みます。セットアップ手順は **[連携ガイド →](docs/integrations.md)**（英語）を参照してください。
 
@@ -333,8 +333,8 @@ pip でインストール可能なパッケージなら、mureo のソースツ�
 - **データベース不要**：状態は広告プラットフォームの API またはローカルファイル（`STRATEGY.md` / `STATE.json`）に保持
 - **LLM を内蔵しない**：mureo はデータの取得と分析を担当し、推論、計画、判断はエージェント側が行う
 - **Web フレームワーク不要**：CLI（Typer）と MCP（stdio）のみ。`mureo configure` の UI も標準ライブラリの `http.server` を `127.0.0.1` で動かすだけ
-- **データは不変**：すべての dataclass で `frozen=True` を使用し、意図しない変更を防止
-- **認証情報はローカルに保存**：`~/.mureo/credentials.json` または環境変数から読み込み、公式の広告プラットフォーム API 以外には一切送信しない
+- **データは不変**：状態と記録のモデル（`StateDocument`、`ActionLogEntry`、`RollbackPlan` など）は `frozen=True` を使用し、意図しない変更を防止
+- **認証情報はローカルに保存**：`~/.mureo/credentials.json` または環境変数から読み込み、その認証情報が属するサービス（公式の広告プラットフォーム API と、Creative Studio に設定した画像生成 API）以外には一切送信しない
 
 モジュール構成とシステム図は **[アーキテクチャガイド →](docs/architecture.md)**（英語）を参照してください。
 

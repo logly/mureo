@@ -130,7 +130,7 @@ BYOD は、実際の Google Ads / Meta Ads データを **読み取り専用エ�
 - [`docs/byod.ja.md#step-2a--google-ads-script-を実行任意`](byod.ja.md#step-2a--google-ads-script-を実行任意) — Google Ads テンプレート + 入力手順
 - [`docs/byod.ja.md#step-2b--meta-広告マネージャからエクスポート任意`](byod.ja.md#step-2b--meta-広告マネージャからエクスポート任意) — Meta Ads 保存済みレポート (9 言語対応: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
 
-エクスポートは独立しているので、片方だけでも開始できます(あとから追加可)。Search Console / GA4 / Amazon Ads / TikTok Ads は BYOD 非対応 — Live API のみ。(Amazon Ads は公式 Amazon Ads MCP をブリッジする方式のため、設計上 BYOD バンドルはありません。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。)
+エクスポートは独立しているので、片方だけでも開始できます(あとから追加可)。Search Console / GA4 / Amazon Ads / TikTok Ads / ChatGPT Ads は BYOD 非対応 — Live API のみ。(Amazon Ads は公式 Amazon Ads MCP をブリッジする方式のため、設計上 BYOD バンドルはありません。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。)
 
 > **BYOD とデモは mureo-native 専用。** これらは mureo の CSV ベース MCP ツールで提供され、公式プラットフォーム MCP（`mureo providers add …` / Claude.ai の Meta コネクタ）は Live API 経路のため BYOD/デモ データを読めません。BYOD やデモで分析するプラットフォームは公式 MCP に切り替えない（`mureo providers add` しない）でください — mureo-native を有効のままに。詳細は [docs/byod.ja.md](byod.ja.md#なぜ-byod-なのか) → *対応範囲*。
 
@@ -189,7 +189,7 @@ mureo byod import ~/Downloads/mureo-meta-ads.xlsx     # Meta は後から追加 
 
 # 認証 (Live API)
 
-mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャンペーンを変更する** (`/rescue` / `/budget-rebalance` / `/creative-refresh` / `mureo rollback apply`) には必須。GA4 / Search Console もこの経路でのみ使えます。**Amazon Ads** もここに含まれますが経路が異なり、広告 API を直接叩くのではなく mureo が公式 Amazon Ads MCP をブリッジします。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。
+mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャンペーンを変更する** (`/rescue` / `/budget-rebalance` / `/creative-refresh` / MCP ツール `rollback_apply`) には必須。GA4 / Search Console もこの経路でのみ使えます。**Amazon Ads** もここに含まれますが経路が異なり、広告 API を直接叩くのではなく mureo が公式 Amazon Ads MCP をブリッジします。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。
 
 ## Step 1 — 認証情報を取得
 
@@ -199,6 +199,7 @@ mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャン
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) の App ID + App Secret(開発モードで OK) |
 | **Amazon Ads** | Login with Amazon (LwA) アプリの Client ID + (推奨) Refresh Token + Client Secret。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md) |
 | **GA4 / Search Console** | OAuth ログインのみ(developer token 不要、ウィザードが処理) |
+| **ChatGPT Ads** | Ads Manager の設定ページで作る Ads API キー(1 キーで 1 アカウント)。`mureo configure` の **ChatGPT Ads** タブに貼るか `CHATGPT_ADS_API_KEY` に設定。詳細は [`docs/chatgpt-ads.ja.md`](chatgpt-ads.ja.md) |
 
 > **Google Ads API のアクセスレベル**: Cloud Console で API を有効化すると **Test** access(テストアカウントのみ)が即時に付与されます。**本番アカウントには最低でも Explorer** が必要で、これは Google Ads API の **Overview** ページから申請し、ブランド確認は不要です(本番の操作上限は 1 日 2,880)。**Basic**(1 日 15,000)は、申請の前提として Cloud プロジェクトのブランド確認が必要です。待ちの間は BYOD で運用してください。詳細は [docs/authentication.ja.md — アクセスレベル](authentication.ja.md#アクセスレベル)。
 
@@ -215,9 +216,9 @@ pip install mureo
 mureo setup claude-code             # interactive OAuth wizard が setup の一部として走る
 ```
 
-setup コマンドはローカル Web ウィザードを `http://127.0.0.1:<random-port>/` で起動し、各 token / secret を入力するフォームを表示。同じブラウザ内で OAuth フローも完結します。`--no-google-ads` / `--no-meta-ads` で個別に skip 可能。
+setup コマンドはターミナルで OAuth のクライアント ID / シークレット(Google)と App ID / App Secret(Meta)を尋ね、同意画面だけブラウザで開きます。`--no-google-ads` / `--no-meta-ads` で個別に skip 可能。
 
-Google の refresh token が既に保存されている場合(Google Ads と Search Console は同じトークンを共有します)、ウィザードはその認証ステップを skip し、保存済みトークンを再利用する旨を表示します。改めて取り直したいときは **Google を再認証する** ボタンを押してください。
+ブラウザのフォームを使う場合は `mureo configure` を使います。Google の refresh token が既に保存されている場合(Google Ads と Search Console は同じトークンを共有します)、そのウィザードは認証ステップを skip し、保存済みトークンを再利用する旨を表示します。改めて取り直したいときは **Google を再認証する** ボタンを押してください。
 
 > **Amazon Ads** は「自動で戻ってくる」方式ではなく、コード貼り付け方式のウィザードです(Amazon の同意にはローカルツールが待ち受けられるループバックコールバックがないため)。`mureo configure` を開き、ダッシュボードの **接続先の認証情報** にある **Amazon Ads** タブに Login with Amazon の **クライアント ID** と **クライアントシークレット** を入力(または `AMAZON_ADS_*` 環境変数を設定)→ **Amazon の同意ページを開く** をクリックして許可 → リダイレクト先のアドレスをタブに貼り付け、の順です。mureo が両方のトークンを保存し、ツール一覧も更新します。最後に MCP サーバーを再起動してください。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。
 

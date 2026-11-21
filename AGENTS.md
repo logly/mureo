@@ -83,6 +83,12 @@ mureo/
 │   └── accounts.py      # Ad-account listing
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
+├── amazon_ads/          # Amazon Ads official-MCP bridge (mureo-mediated, #113/#121)
+│   ├── bridge.py        # AmazonAdsBridge — MCPToolProvider (pure mcp_tools() + forwarding handler)
+│   ├── endpoints.py     # Regional endpoint URLs (na / eu / fe) + request headers
+│   ├── lwa.py           # Login with Amazon token exchange (mint / refresh)
+│   ├── manifest.py      # `mureo amazon refresh-manifest` → ~/.mureo/amazon_tools.json
+│   └── provider.py      # Registry registration for the in-tree bridge (first-wins on `amazon_ads`)
 ├── chatgpt_ads/         # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992-#995);
 │   │                    #   reads, changes, creates and archives; imports neither mcp nor web
 │   ├── _api.py          # Base URL, OpenAPI version read, timeout / retry / page-size / throttle constants
@@ -139,7 +145,7 @@ mureo/
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
 │   ├── tools_change_import.py             # mureo_external_changes_import (#545)
 │   ├── _handlers_change_import.py         # Change-import handler
-│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_delivery_collapse_* / analysis_exclusion_impact_preview
+│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_delivery_collapse_* / analysis_exclusion_impact_preview / analysis_tracking_consistency_check
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
 │   ├── _handlers_delivery_collapse.py     # Delivery-collapse check / diagnose handlers (#546)
 │   ├── _handlers_exclusion_impact.py      # analysis_exclusion_impact_preview handler (#547)
@@ -192,10 +198,16 @@ mureo/
 │   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, operational + foundation skills
 │   ├── _skill_paths.py  # get_data_path / replace_dest, shared by the skill installers (#879)
 │   ├── setup_gemini.py  # Gemini extension manifest at ~/.gemini/extensions/mureo/
+│   ├── install_desktop_cmd.py # `mureo install-desktop` — onboarding for Claude Desktop chat users
+│   ├── settings_remove.py # remove_* counterparts of the MCP config / credential guard installers
 │   ├── native_skills.py # Deploy/remove plugin native slash skills via `mureo.native_skills` group (#439)
 │   ├── configure_cmd.py # `mureo configure` — open the local web configuration UI
+│   ├── open_cmd.py      # `mureo open` — open the running configure dashboard in a browser (#241)
 │   ├── byod_cmd.py      # `mureo byod import` / `status` / `remove` / `clear`
-│   ├── providers_cmd.py # `mureo providers list` / `install` / `uninstall` (official MCP catalog)
+│   ├── demo_cmd.py      # `mureo demo init` / `list` — synthetic demo bundle
+│   ├── providers_cmd.py # `mureo providers list` / `add` / `remove` / `confirm` (official MCP catalog)
+│   ├── amazon_cmd.py    # `mureo amazon refresh-manifest` — Amazon Ads official-MCP bridge setup
+│   ├── learn_cmd.py     # `mureo learn add` / `tiers` — append insights to the diagnostic knowledge base
 │   ├── service_cmd.py   # `mureo service` — install/restart the auto-start configure daemon (#241)
 │   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
 │   ├── skill_status.py  # Deployed workflow skills current / stale / missing (#728); read by
@@ -461,7 +473,7 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Callouts | `callouts.list`, `callouts.create`, `callouts.remove` |
 | Conversions | `conversions.list`, `conversions.get`, `conversions.performance`, `conversions.create`, `conversions.update`, `conversions.remove`, `conversions.tag` |
 | Targeting | `recommendations.list`, `recommendations.apply`, `device_targeting.get`, `device_targeting.set`, `bid_adjustments.get`, `bid_adjustments.update`, `location_targeting.list`, `location_targeting.update`, `schedule_targeting.list`, `schedule_targeting.update`, `change_history.list`, `demographic_targeting.list`, `audience_targeting.list` |
-| Analysis | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
+| Analysis | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `auction_insights.analyze`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
 | B2B | `btob.optimizations` |
 | Creative | `landing_page.analyze`, `creative.research` |
 | Monitoring | `monitoring.delivery_goal`, `monitoring.cpa_goal`, `monitoring.cv_goal`, `monitoring.zero_conversions` |
@@ -478,7 +490,7 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Campaigns | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.pause`, `campaigns.enable` |
 | Ad Sets | `ad_sets.list`, `ad_sets.create`, `ad_sets.update`, `ad_sets.get`, `ad_sets.pause`, `ad_sets.enable` |
 | Ads | `ads.list`, `ads.create`, `ads.update`, `ads.get`, `ads.pause`, `ads.enable` |
-| Creatives | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.upload_image` |
+| Creatives | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.create_lead`, `creatives.upload_image` |
 | Images | `images.upload_file` |
 | Insights | `insights.report`, `insights.breakdown` |
 | Audiences | `audiences.list`, `audiences.create`, `audiences.get`, `audiences.delete`, `audiences.create_lookalike` |
@@ -488,11 +500,11 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Analysis | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |
 | Placement Exclusions | `excluded_placements.get`, `excluded_placements.set` |
 | Product Catalog | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
-| Lead Ads | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
-| Videos | `videos.upload`, `videos.upload_file` |
+| Lead Ads | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `lead_forms.update`, `lead_forms.duplicate`, `leads.get`, `leads.get_by_ad`, `leads.export_csv` |
+| Videos | `videos.upload`, `videos.upload_file`, `videos.get`, `videos.thumbnails` |
 | Split Tests | `split_tests.list`, `split_tests.get`, `split_tests.create`, `split_tests.end` |
 | Ad Rules | `ad_rules.list`, `ad_rules.get`, `ad_rules.create`, `ad_rules.update`, `ad_rules.delete` |
-| Pages | `pages.list` |
+| Pages | `pages.list`, `pages.photos_list` |
 | Page Posts | `page_posts.list`, `page_posts.boost` |
 | Instagram | `instagram.accounts`, `instagram.media`, `instagram.boost` |
 
@@ -505,6 +517,26 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Sitemaps | `sitemaps.list`, `sitemaps.submit` |
 | URL Inspection | `url_inspection.inspect` |
 
+### ChatGPT Ads
+
+Bundled provider (`mureo/chatgpt_ads/`); tool names are `chatgpt_ads_` + the name below. See [docs/chatgpt-ads.md](docs/chatgpt-ads.md).
+
+| Category | Tools |
+|----------|-------|
+| Account | `account.get`, `account.spend_limits_get`, `account.daily_spend_limit_set` |
+| Campaigns | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.update_budget`, `campaigns.pause`, `campaigns.enable`, `campaigns.archive` |
+| Ad Groups | `ad_groups.list`, `ad_groups.get`, `ad_groups.create`, `ad_groups.update`, `ad_groups.update_bid`, `ad_groups.pause`, `ad_groups.enable`, `ad_groups.archive` |
+| Ads | `ads.list`, `ads.get`, `ads.create`, `ads.preview`, `ads.pause`, `ads.enable`, `ads.archive` |
+| Insights | `insights.report` |
+| Change History | `change_history.list` |
+| Creative | `images.upload_file`, `locations.search` |
+| Audiences | `audiences.list`, `audiences.get`, `audiences.create`, `audiences.members_add`, `audiences.members_remove`, `audiences.operations_get` |
+| Measurement | `pixels.list`, `pixels.create`, `conversion_events.list`, `conversion_events.create`, `conversions.report` |
+
+### Amazon Ads
+
+Amazon Ads is served by bridging the official Amazon Ads MCP (`mureo/amazon_ads/`): mureo exposes Amazon's own tool names as-is from the manifest that `mureo amazon refresh-manifest` builds, so there is no mureo-defined tool table. See [docs/amazon-ads.md](docs/amazon-ads.md).
+
 ### mureo Core Tools (platform-independent)
 
 These families are not tied to a single ad platform. Tool names are the exact MCP tool ids.
@@ -515,7 +547,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Rollback | `rollback_plan_get`, `rollback_apply` |
 | Batch (#549) | `mureo_batch_begin`, `mureo_batch_end`, `mureo_batch_status` |
 | Change Import (#545) | `mureo_external_changes_import` |
-| Analysis | `analysis_anomalies_check`, `analysis_delivery_collapse_check`, `analysis_delivery_collapse_diagnose`, `analysis_exclusion_impact_preview` |
+| Analysis | `analysis_anomalies_check`, `analysis_delivery_collapse_check`, `analysis_delivery_collapse_diagnose`, `analysis_exclusion_impact_preview`, `analysis_tracking_consistency_check` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
@@ -532,7 +564,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 - **Tools return structured JSON data only** — no formatted text, no Markdown in tool responses.
 - **All data models use frozen dataclasses** — immutable by default.
 - **Credentials via file or env vars** — `~/.mureo/credentials.json` with environment variable fallback.
-- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap, Search Console: 5 QPS, Creative Studio: 1 QPS + 120/hr cap, Plugin tools: 5 QPS). See `mureo/throttle.py`.
+- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap, Search Console: 5 QPS, Creative Studio: 1 QPS + 120/hr cap, ChatGPT Ads: 8 QPS per tool, Plugin tools: 5 QPS). See `mureo/throttle.py` (ChatGPT Ads: `mureo/chatgpt_ads/_api.py`).
 - **Meta token auto-refresh** — Long-Lived Tokens are automatically refreshed when 53+ days old (requires `app_id` and `app_secret`). See `mureo/auth.py`.
 
 ## Coding Standards

@@ -65,7 +65,7 @@ A plugin is, in the smallest case, a Python package that:
   its `pyproject.toml`.
 
 That is enough to be discovered by `mureo discover_providers()` and
-matched against the 16 built-in skills.
+matched against the built-in skills.
 
 ### What a plugin can do (and cannot do, in Phase 1)
 
@@ -82,6 +82,8 @@ Phase 1 in scope:
   so changes made outside mureo on your platform are imported into
   `action_log`; see
   [change-import.md](./change-import.md#the-abi-hook--adding-a-change-feed).
+- Supply an image provider via the `mureo.image_providers` entry-points
+  group; see [creative-studio.md](./creative-studio.md#provider-keys-bring-your-own).
 
 Phase 1 explicitly **out of scope** (will land in later phases — your
 plugin should not depend on them):
@@ -293,7 +295,7 @@ behaviour goes into secondary Protocols.
 ### Declaring per-account credential fields (optional)
 
 Providers often need identifiers that vary per platform account —
-Google Ads `customer_id`, Meta Ads `ad_account_id`, an analytics
+Google Ads `customer_id`, Meta Ads `account_id`, an analytics
 product's `advertiser_id`. These are distinct from operator-shared
 OAuth credentials (client secrets and refresh tokens; for Google
 Ads also the optional legacy developer token) which typically apply
@@ -461,7 +463,7 @@ account_credential_fields = (
 
 The OSS-shipped `GoogleAdsAdapter` and `MetaAdsAdapter` do **not**
 use `secret=True` — their per-account fields are public identifiers
-(`customer_id`, `ad_account_id`, `login_customer_id`); the sensitive
+(`customer_id`, `account_id`, `login_customer_id`); the sensitive
 material (refresh tokens, system user tokens) is operator-shared and
 lives in the `SecretStore` base layer, not in
 `account_credential_fields`. Use `secret=True` when the per-account
@@ -974,7 +976,7 @@ built, which is before the server composes its `instructions`.
 | `statement` | One paragraph of plain prose, at most `MAX_STATEMENT_CHARS` (400) characters, no line breaks. |
 | `evidence` | The same `Evidence` record the learning rules use: first-party `source`, ISO `retrieved` date, and the `quote` the statement rests on. |
 
-Four rules the registry enforces, and why:
+The rules the registry enforces, and why:
 
 - **Evidence is required.** A model missing `source`, `retrieved` or
   `quote` — or carrying a `retrieved` that is not an ISO date — is
@@ -1175,6 +1177,86 @@ also the reason the reason codes exist, so an operator reading
 `IncompletePlatform.detail` is told to come to you rather than left
 wondering why a monthly figure never appears. Declare it in the same
 change that starts writing `monthly_budget`, not before.
+
+### Declaring learning-period reset rules (optional)
+
+A change that restarts an automated bid strategy's learning period
+costs days of delivery. mureo checks for it in three places (#548): the
+`mureo_learning_reset_preflight` tool, the `## Guardrails` rules
+`block_learning_resets` / `block_learning_resets_during_incident`, and a
+notice appended to the result of a reset-triggering call. For a
+platform with no registered rules every mutation is classified
+`unknown` and its learning state `unreportable`. Register a
+`PlatformLearningRules` to say what resets learning on your platform and
+where mureo can read whether a campaign is learning, at module import
+time, from the same module your `mureo.providers` entry point loads:
+
+```python
+from mureo.policy.learning_rules import (
+    Evidence,
+    PlatformLearningRules,
+    ResetTrigger,
+    StateObservation,
+    register_platform_learning_rules,
+)
+
+_RETRIEVED = "2026-08-19"
+_SOURCE = "https://developers.acme.example/ads/bidding"
+
+register_platform_learning_rules(
+    PlatformLearningRules(
+        platform="acme_ads",
+        tool_prefix="acme_ads_",
+        observation=StateObservation(
+            snapshot_key="learning_status",
+            learning_values=frozenset({"LEARNING"}),
+            evidence=Evidence(
+                source=_SOURCE,
+                retrieved=_RETRIEVED,
+                quote="learning_status is LEARNING while the bidder re-learns.",
+            ),
+        ),
+        triggers=(
+            ResetTrigger(
+                change_class="bid_strategy_change",
+                tools=frozenset({"acme_ads_campaigns_update"}),
+                requires_arguments=frozenset({"bid_strategy"}),
+                evidence=Evidence(
+                    source=_SOURCE,
+                    retrieved=_RETRIEVED,
+                    quote="Changing the bid strategy restarts learning.",
+                ),
+            ),
+        ),
+        triggers_are_enumerated=True,
+        notes="Only the changes Acme's bidding reference lists are classified.",
+    )
+)
+```
+
+Signature: `register_platform_learning_rules(rules: PlatformLearningRules) -> None`.
+
+| Field | Contract |
+|---|---|
+| `platform` | The STATE.json `platforms` key your campaigns are written under. The learning-state read looks the campaign up under exactly this key, and notices name the platform by it. |
+| `tool_prefix` | How a tool name is attributed to your platform. When two registered prefixes match a tool, the longest wins. |
+| `observation` | A `StateObservation`, or `None` when mureo cannot read your platform's learning state. `snapshot_key` names the key in the campaign snapshot's `bidding_details` that carries the platform's status string; `learning_values`, `unreportable_values` and `unknown_values` (and `learning_prefixes`) are compared against the upper-cased string, so list them in upper case. Any other non-empty value reads as steady; a missing one reads as unknown. |
+| `triggers` | `ResetTrigger` records: a `change_class`, the exact tool names that make the change, the `Evidence` it rests on, and optionally `requires_arguments` (the call must carry one of these arguments) and `argument_equals` (an argument must hold one of these values). |
+| `triggers_are_enumerated` | `True` only when your trigger list is complete enough that a mutation absent from it can be reported as `no_reset`. `False` keeps every mutation `unknown`, which still names your platform in the answer. |
+| `notes` | The known limits of the classification, carried in the detail of every verdict on a mutation of your platform. |
+| `unreportable_detail` / `unreportable_evidence` | Optional. When your platform has a learning state mureo cannot read, why — shown in place of the generic unreportable text. |
+
+Every `Evidence` is the same record the platform models use: a
+first-party `source`, the ISO `retrieved` date and the `quote` the rule
+rests on.
+
+**Registration replaces.** Unlike platform models and monthly-budget
+declarations, this registry is not first-wins: a second registration
+for a `platform` key that is already taken — a built-in one included —
+replaces the earlier rules without a warning. An empty `platform` or
+`tool_prefix` is refused with `ValueError`. See
+[Learning-period reset pre-flight](./mcp-server.md#learning-period-reset-pre-flight)
+for what the operator sees.
 
 ### Domain Protocols (implement at least one)
 
@@ -1504,7 +1586,8 @@ mureo-specific Protocol method:
   to the conservative ***mutating*** default. Declare the hint if you
   care — the name fallback exists for bridged surfaces that cannot.
 - A *mutating* call is additionally promoted into `STATE.json`'s
-  `action_log` (`platform="plugin:<your-dist>"`) **only when a
+  `action_log` (`platform="plugin:<your-dist>:<provider>"`, the
+  canonical key in Section 14) **only when a
   `STATE.json` already exists in the cwd** — mureo never creates one
   just because a plugin ran. This makes plugin mutations visible to
   the agent / strategy review / `rollback_plan_get` like a built-in
@@ -1944,10 +2027,11 @@ channel built-ins use**.
 
 What is **not** generically possible (and is not claimed): mureo's
 platform-specific analytics (anomaly detection, `result_indicator`
-CV-mismatch, RSA-asset audit, rule-based scoring) and *executable*
-auto-rollback. Those are hand-written per built-in; matching their
+CV-mismatch, RSA-asset audit, rule-based scoring). Those are
+hand-written per built-in; matching their
 depth for your platform requires authoring platform-specific skill
-logic — mureo cannot synthesise it for an unknown platform.
+logic — mureo cannot synthesise it for an unknown platform. Executable
+rollback requires a declared or captured reversal (see above).
 
 ---
 
@@ -2034,8 +2118,8 @@ parse_capability("read_campaigns")
 parse_capabilities(["read_campaigns", "write_budget"])
 # -> frozenset({Capability.READ_CAMPAIGNS, Capability.WRITE_BUDGET})
 
-parse_capability("READ_CAMPAIGNS")
-# -> ValueError: unknown capability: 'READ_CAMPAIGNS'. Did you mean: read_campaigns? ...
+parse_capability("read_campaign")
+# -> ValueError: unknown capability: 'read_campaign'. Did you mean: read_campaigns, write_campaign_status? ...
 ```
 
 Both helpers raise `ValueError` with close-match suggestions on
@@ -2154,7 +2238,7 @@ produce a modified copy.
 > always-on tool note (`guidance`, Section 3). Skills are
 > for what to *do*, not for what is *true*.
 
-mureo ships 16 built-in skills (in
+mureo ships built-in skills (in
 `mureo/_data/skills/<skill>/SKILL.md`) and supports third-party
 skills via the `mureo.skills` entry-points group. Each skill is a
 markdown file with YAML frontmatter declaring what it does and which
@@ -2241,7 +2325,7 @@ print("Unavail.:  ", [s.name for s in match.unavailable])
 | Provider `name` | `^[a-z][a-z0-9_]*$` | `acme_ads` |
 | Skill `name`    | `^_?[a-z][a-z0-9_-]*$` | `_mureo-shared`, `daily-check` |
 
-The skill regex is deliberately looser because the 16 in-tree skills
+The skill regex is deliberately looser because the in-tree skills
 already use hyphens and a single leading underscore (`_mureo-shared`,
 `daily-check`, `weekly-report`). Provider names map to Python tool
 prefixes and must remain snake_case identifiers.
@@ -2352,7 +2436,8 @@ discovery.
 The entry-point key should match the class's `name` class attribute.
 mureo trusts the class attribute (not the entry-point key) when
 populating `ProviderEntry.name`, but mismatches are confusing for
-operators reading discovery logs.
+operators reading discovery logs. A mismatch also changes the
+`<provider>` half of the canonical platform key (Section 14).
 
 ### Registering multiple providers from one package
 
@@ -2515,13 +2600,15 @@ plugins as a known trust boundary but still expects basic hygiene:
 2. **Validate inputs at adapter boundaries.** Your adapter receives
    user-controlled values via DTOs (campaign IDs, keyword text,
    URLs). Validate them before interpolating into platform-specific
-   query languages — see `GoogleAdsAdapter._validate_campaign_id`
-   for the digits-only GAQL-safety pattern.
+   query languages — see `_validate_campaign_id` in
+   `mureo/adapters/google_ads/adapter.py` for the digits-only
+   GAQL-safety pattern.
 3. **Do not perform I/O at import time.** mureo discovery loads
    your top-level module via `ep.load()` and then calls validation
    on the class object. Module import should be cheap. Defer
-   credential loading, network calls, and FS scans to `__init__` or
-   first-method-call time.
+   credential loading, network calls, and FS scans to
+   first-method-call time (an MCP-exposed provider is constructed
+   while the server imports; see Section 3).
 4. **Bound external calls.** Use timeouts on every HTTP call,
    bounded retries with jitter, and rate limits matching the
    platform's quota.
@@ -3232,8 +3319,7 @@ your assets persist for the rest of the configure session.
 - `pip show <your-dist>` confirms the install.
 - `importlib.metadata.entry_points(group="mureo.web_extensions")` lists
   the registered entry points in the running interpreter.
-- `mureo configure --log-level=DEBUG` (if your shell respects it via
-  `MUREO_LOG_LEVEL=DEBUG mureo configure`) surfaces
+- `MUREO_LOG_LEVEL=DEBUG mureo configure` surfaces
   `WebExtensionWarning` messages explaining why an entry point was
   skipped (bad name, broken `ep.load()`, `routes()` / `view()`
   exception, duplicate name shadowed by an earlier registration).

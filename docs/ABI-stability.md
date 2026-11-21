@@ -444,7 +444,7 @@ boundary. This is permanent.
 
 ## 6. Entry-point group names
 
-Four group names are part of the ABI:
+Six group names are part of the ABI, each with an exported constant:
 
 | Constant | Value | Iterated by |
 |---|---|---|
@@ -453,15 +453,15 @@ Four group names are part of the ABI:
 | `NATIVE_SKILLS_ENTRY_POINT_GROUP` | `"mureo.native_skills"` | `mureo.cli.native_skills.install_native_skills` |
 | `ANALYTICS_ENTRY_POINT_GROUP` | `"mureo.analytics"` | `AnalyticsRegistry.discover` |
 | `CHANGE_FEED_ENTRY_POINT_GROUP` | `"mureo.change_feeds"` | `ChangeFeedRegistry.discover` |
-| (literal) | `"mureo.policy_gates"` | `mureo.mcp.server._load_policy_gates` |
+| `POLICY_GATES_ENTRY_POINT_GROUP` | `"mureo.policy_gates"` | `mureo.mcp.server._load_policy_gates` |
 
 `PROVIDERS_…` / `SKILLS_…` / `NATIVE_SKILLS_…` are exported from
-`mureo.core.providers.registry` (the first two re-exported from
+`mureo.core.providers.registry` (`SKILLS_…` re-exported from
 `mureo.core.skills`); `ANALYTICS_…` is exported from
 `mureo.analytics` (it is defined in `mureo.core.platform_keys` and re-exported by
-`mureo.analytics.registry` and `mureo.analytics`); `CHANGE_FEED_…` from `mureo.change_import`. The `mureo.policy_gates` literal is documented
-here (no exported constant) because policy gates are loaded by the
-MCP server itself rather than by a third-party-facing registry.
+`mureo.analytics.registry` and `mureo.analytics`); `CHANGE_FEED_…` from `mureo.change_import`; `POLICY_GATES_…` from
+`mureo.core.policy`. Policy gates are loaded by the MCP server itself
+rather than by a third-party-facing registry.
 Renaming any of these groups is a breaking change — every plugin's
 `pyproject.toml` would have to change.
 
@@ -756,7 +756,7 @@ between minor releases. Do not depend on them from plugin code:
   should not depend on that ordering. Use
   `list_providers_by_capability` (returns name-sorted) if you need
   determinism.
-- **The 16 in-tree built-in skills**: the set of bundled skills
+- **The in-tree built-in skills**: the set of bundled skills
   ships under `mureo/_data/skills/` and may grow / shrink / be
   renamed across releases. Plugins should not depend on a specific
   built-in skill being present.

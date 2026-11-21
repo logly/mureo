@@ -72,7 +72,7 @@ The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defi
 
 ### Tool Connection Layer
 
-The bottom layer connects to advertising platforms and analytics services. mureo currently ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console; third-party MCP servers (e.g., GA4) can be composed alongside them. **This layer is intentionally replaceable.** As platforms release official MCP servers (Meta Ads MCP shipped 2026-04-29; Google Ads MCP available), mureo's built-in connectors are swapped for official ones with no change to the orchestration layer above. Official MCPs are drivers; mureo is the control plane that drives them.
+The bottom layer connects to advertising platforms and analytics services. mureo currently ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console, and, as a bundled provider, ChatGPT Ads; third-party MCP servers (e.g., GA4) can be composed alongside them. **This layer is intentionally replaceable.** As platforms release official MCP servers (Meta Ads MCP shipped 2026-04-29; Google Ads MCP available), mureo's built-in connectors are swapped for official ones with no change to the orchestration layer above. Official MCPs are drivers; mureo is the control plane that drives them.
 
 The built-in Google Ads, Meta Ads and Search Console tools stay as they are; a new platform is added as a provider (`MCPToolProvider`), shipped inside mureo or as a separate distribution depending on the platform. The provider path receives the audit trail, throttle, strategy gate, `action_log` recording and rollback from what the provider declares, so the server gains no per-platform branch. Providers shipped inside mureo are registered from one table, `mureo/bundled_providers.py`, which both the MCP server and the configure UI call before entry-point discovery. It holds two today: the Amazon Ads bridge (forwarding to Amazon's official MCP) and ChatGPT Ads (41 tools, eighteen reads and twenty-three changes, calling OpenAI's Advertiser API directly with an Ads API key; see [chatgpt-ads.md](chatgpt-ads.md)).
 
@@ -134,7 +134,10 @@ mureo/
 │   ├── mappers.py           # Response mapping to structured dicts
 │   ├── _ads.py              # _AdsMixin (create/update/list RSAs)
 │   ├── _ads_display.py      # _DisplayAdsMixin (create RDAs + RDAUploadError)
+│   ├── _asset_groups.py     # _AssetGroupsMixin (Performance Max asset groups: read, text swap)
+│   ├── _asset_groups_images.py # _AssetGroupImagesMixin (Performance Max image swap)
 │   ├── _keywords.py         # _KeywordsMixin (add/remove/suggest)
+│   ├── _placements.py       # _PlacementsMixin (negative placements: sites/apps/app categories)
 │   ├── _extensions.py       # _ExtensionsMixin (sitelinks, callouts, conversions, targeting)
 │   ├── _monitoring.py       # _MonitoringMixin (anomaly detection, reports)
 │   ├── _diagnostics.py      # _DiagnosticsMixin (campaign diagnosis, one method per delivery check)
@@ -146,10 +149,11 @@ mureo/
 │   ├── _gaql_validator.py   # GAQL input validators (IDs, dates, date ranges, IN clauses)
 │   └── _date_ranges.py      # Period-over-period comparison windows (SDK-free, #809)
 ├── meta_ads/                # Meta Ads API client
-│   ├── client.py            # MetaAdsApiClient (17 Mixins)
+│   ├── client.py            # MetaAdsApiClient (Mixins)
 │   ├── mappers.py           # Response mapping
 │   ├── _campaigns.py        # CampaignsMixin
 │   ├── _ad_sets.py          # AdSetsMixin
+│   ├── _placement_exclusions.py # PlacementExclusionsMixin (ad-set publisher exclusions)
 │   ├── _ads.py              # AdsMixin
 │   ├── _creatives.py        # CreativesMixin (carousel, collection, image upload)
 │   ├── _videos.py           # VideosMixin (AdVideo upload, status, thumbnails)
@@ -280,8 +284,8 @@ mureo/
 │   ├── platform_guards.py   # Write-time guards over that join (refuse / warn on duplicates)
 │   ├── state_store.py       # FilesystemStateStore — the default StateStore (STATE.json / STRATEGY.md)
 │   └── errors.py            # Context-specific exceptions
-├── cli/                     # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
-│   ├── main.py              # Entry point (mureo command) — registers all 12 sub-command groups
+├── cli/                     # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad operations are via MCP)
+│   ├── main.py              # Entry point (mureo command) — registers every sub-command group plus `version`
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor / codex / gemini (Typer handlers)
 │   ├── setup_codex.py       # Codex install-kit (MCP config, credential guard, workflow-command skills, shared skills)
 │   ├── _skill_paths.py      # get_data_path / replace_dest, shared by setup_cmd, setup_codex, native_skills, skill_status (#879)
@@ -295,11 +299,15 @@ mureo/
 │   │                        #   upgrade_cmd and web/status_collector.py (#863)
 │   ├── byod_cmd.py          # mureo byod import / status / remove / clear (Bring Your Own Data)
 │   ├── demo_cmd.py          # mureo demo — scaffold a self-contained demo workspace
-│   ├── providers_cmd.py     # mureo providers install / list / remove (official MCP providers)
+│   ├── providers_cmd.py     # mureo providers list / add / remove / confirm (official MCP providers)
+│   ├── amazon_cmd.py        # mureo amazon refresh-manifest (Amazon Ads official-MCP bridge setup)
 │   ├── open_cmd.py          # mureo open — surface the running configure dashboard
 │   ├── learn_cmd.py         # mureo learn — append insights to the knowledge base
 │   ├── install_desktop_cmd.py # mureo install-desktop — wire mureo into Claude Desktop chat (macOS)
 │   ├── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
+│   ├── repair_cmd.py        # mureo repair platform-key — drop a platforms entry the document shows to be wrong
+│   ├── journal_cmd.py       # mureo journal — read back JOURNAL.jsonl
+│   ├── settings_remove.py   # remove_* counterparts of the MCP config / credential guard installers
 │   └── _tty.py              # TTY-safe helpers (confirm_or_default, is_tty) for non-interactive setup
 ├── mcp/                     # MCP server
 │   ├── __main__.py                        # python -m mureo.mcp entry point
@@ -455,7 +463,7 @@ skills/                          # Native slash skills — deployed to ~/.claude
 ├── competitive-scan/            # Auction analysis with Market Context
 ├── sync-state/                  # Manual STATE.json synchronization
 ├── learn/                       # Save diagnostic insights to knowledge base
-├── ... (28 skill dirs total)    # weekly-report, goal-review, monthly-report, tracking-health, …
+├── ...                          # weekly-report, goal-review, monthly-report, tracking-health, …
 ├── _mureo-strategy/             # Shared: STRATEGY.md / STATE.json conventions
 ├── _mureo-state-schema/         # Shared: STATE.json schema + status vocabulary contract (Code `Write`)
 ├── _mureo-report-persist/       # Shared: daily-check persistence steps (report, rollups, history, display)
@@ -521,7 +529,7 @@ mureo assumes the caller is an AI agent susceptible to prompt injection, not a t
 2. **GAQL input validation** — every ID, date, date-range constant, and string literal entering a Google Ads query flows through a single whitelist-based surface in `mureo/google_ads/_gaql_validator.py`. `_period_to_date_clause`'s explicit-range branch (`YYYY-MM-DD..YYYY-MM-DD` or GAQL `BETWEEN` spelling) pattern-matches and revalidates its dates and re-emits the `BETWEEN` clause instead of passing the raw caller string into GAQL.
 3. **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline built from historical `action_log` entries and emits prioritized alerts for zero spend (CRITICAL), CPA spikes (≥1.5×, critical at 2×), and CTR drops (≤0.5×, critical at 0.3×). Sample-size gates (30+ conversions, 1000+ impressions) follow the `_mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows; CPA/CTR are medianed per-entry so baseline values reflect a real historical day. Counts are medianed per day: an entry that states its window (`days`, or a `period` such as `LAST_30_DAYS`) has them divided by it, one that states none counts as one day, and `cost` / `spend` are one figure.
 4. **Tracking-parameter consistency** — `mureo/analysis/tracking/` detects ads whose final-URL tracking parameters disagree with the campaign they live in: a silent defect, because delivery and spend look healthy while the analytics everyone downstream trusts is quietly wrong. The detector is platform-neutral (it sees only `AdTrackingRecord`) with one thin accessor per platform, and it derives its verdict from evidence already in the account — never from a guessed naming convention. Operator intent is declared in STRATEGY.md's `## Tracking Convention` and parsed by mureo, not interpreted by the agent. Exposed as `analysis_tracking_consistency_check`, used by `/tracking-health` for the account audit and as a pre-flight before ads are created. See [tracking-consistency.md](tracking-consistency.md) for the exhaustive list of what it cannot detect.
-5. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update + status toggles across Google/Meta Ads), refuses destructive verbs (`.delete` / `.remove` / `.destroy` / `.purge` / `.transfer`), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
+5. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update, status toggles and the placement-exclusion reversals across Google/Meta Ads), refuses destructive verbs (`_delete` / `_remove` / `_destroy` / `_purge` / `_transfer`; `google_ads_negative_placements_remove` is the one exemption, because the inverse of adding an exclusion is a removal), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
 
    A bulk change is planned as **one unit** (#549): `mureo_batch_begin` / `mureo_batch_end` declare the boundary, every `action_log` entry written in between is stamped with the batch id at the single `append_action_log` choke point (so native, hosted-connector and bridged/plugin recordings all join without any per-platform code), and `rollback_plan_get` takes that id and classifies **every** member. Coverage is reported overall and per platform as `full` / `partial` / `none` — because reversibility is not uniform across platforms, and a plan that quietly omitted the members mureo cannot reverse would read as a complete revert. The same allow-list decides each member, so nothing about the guarantee is loosened by grouping.
 
@@ -539,7 +547,10 @@ Both API clients use multiple inheritance with Mixins to organize functionality 
 class GoogleAdsApiClient(
     _AdsMixin,           # RSA CRUD (create/update/list/status)
     _DisplayAdsMixin,    # RDA creation with auto image upload
+    _AssetGroupsMixin,   # Performance Max asset groups: read, text swap
+    _AssetGroupImagesMixin,  # Performance Max image swap
     _KeywordsMixin,      # Keyword add/remove/suggest/diagnose
+    _PlacementsMixin,    # Negative placements (sites, apps, app categories)
     _MonitoringMixin,    # Anomaly detection, reports, goals
     _ExtensionsMixin,    # Sitelinks, callouts, conversions, targeting
     _DiagnosticsMixin,   # Campaign delivery diagnosis
@@ -557,12 +568,13 @@ The base class (`GoogleAdsApiClient`) provides:
 - Error handling: `_wrap_mutate_error()` decorator that catches `GoogleAdsException` and returns user-friendly messages
 - Partial reads: in a composite result (diagnostics, performance analysis, monitoring, budget reallocation) a read that fails sets its key to `None` and logs `Failed to retrieve <what> (<ExceptionClass>)` at WARNING; derived insights skip a `None` input, and a `google_ads_monitoring_*` verdict that rests on a failed read is `status: "unknown"` unless data that was read proves `critical` (#865)
 
-### Meta Ads Client -- 17 Mixins
+### Meta Ads Client -- Mixins
 
 ```python
 class MetaAdsApiClient(
     CampaignsMixin,    # Campaign CRUD
     AdSetsMixin,       # Ad set CRUD
+    PlacementExclusionsMixin,  # Ad-set publisher exclusions
     AdsMixin,          # Ad CRUD
     CreativesMixin,    # Creative management, image/carousel/collection
     VideosMixin,       # AdVideo upload (URL/file), status polling, thumbnails
@@ -711,7 +723,7 @@ Each platform throttler combines two mechanisms:
 4. If no credentials: return error TextContent (no exception)
 ```
 
-The credential resolution logic is centralized in `mureo/auth.py`. Both the CLI and MCP server use the same `load_*_credentials()` and `create_*_client()` functions.
+The credential resolution logic is centralized in `mureo/auth.py` (ChatGPT Ads: `mureo/chatgpt_ads/credentials.py`). Both the CLI and MCP server use the same `load_*_credentials()` and `create_*_client()` functions.
 
 ### Meta Ads Token Auto-Refresh
 

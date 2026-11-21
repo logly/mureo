@@ -65,11 +65,12 @@ Key selling points extracted from the 2024 product deck.
 | `## Custom: <title>` | `custom` | Any custom context with a title |
 | `## Deep Research: <title>` | `deep_research` | Research findings with a title |
 | `## Sales Material: <title>` | `sales_material` | Extracted sales material with a title |
+| `## Goal: <title>` | `goal` | Quantitative goal with a title |
 
 **Rules:**
 - Fixed sections (`Persona`, `USP`, etc.) use exact heading matches.
-- Variable sections (`Custom`, `Deep Research`, `Sales Material`) use the `Prefix: Title` format.
-- Unknown section headings are logged as warnings and skipped during parsing.
+- Variable sections (`Custom`, `Deep Research`, `Sales Material`, `Goal`) use the `Prefix: Title` format.
+- Unknown section headings are logged as a warning and preserved verbatim (context_type `raw_heading`), never dropped.
 - The `# Strategy` top-level heading is written by the renderer only when the file has no title of its own; an existing title and any text before the first `## ` section are kept.
 
 ### `## Tracking Convention` (opt-in)
@@ -307,8 +308,8 @@ STATE.json is a JSON file containing campaign state snapshots across platforms, 
 
 A platform key is one of:
 
-- a **first-class ad-platform key** — `google_ads`, `meta_ads`, `tiktok_ads`,
-  `search_console`;
+- a **first-class ad-platform key** — `google_ads`, `meta_ads`,
+  `search_console`, `ga4`, `tiktok_ads`;
 - a **`plugin:<dist>:<provider>` key** for any platform mureo dispatches
   through the plugin / bridge path, where `<dist>` is the provider's pip
   **distribution** name and `<provider>` the **entry-point name** that
@@ -337,11 +338,11 @@ entry through `upsert_campaign` / `set_platform_metrics` /
 the `mureo_state_*` tools)
 requires the key to be one of: a first-class ad-platform key; a platform an
 **installed** plugin registered (its provider / analytics entry-point name,
-e.g. `logly_ads_context`); or a `plugin:<dist>:<provider>` key, which is
+e.g. `acme_ads_context`); or a `plugin:<dist>:<provider>` key, which is
 accepted whether or not that distribution is installed here — use it for a
 snapshot whose bridge lives on another machine. Anything else is refused with
 an error naming the key and listing what would have been accepted, because an
-invented key (`logly_ads` for a bridge whose provider is `logly_ads_context`)
+invented key (`acme` for a bridge whose provider is `acme_ads_context`)
 files an account under a key nothing joins with and double-counts it against
 the entry it really belongs to.
 
@@ -465,7 +466,7 @@ operator's next move differs:
 The label lookup resolves exactly the vocabulary the write guard accepts: a
 built-in key, a `plugin:<dist>:<provider>` key (or the legacy `plugin:<dist>`),
 **and a bare provider name an installed plugin registered** —
-`logly_ads_context` renders `Logly Ads Context (plugin)`. Both sides read one
+`acme_ads_context` renders `Acme Ads Context (plugin)`. Both sides read one
 enumeration of the installed plugins and both fail open when the environment
 cannot be enumerated, so a key mureo itself accepts on write is never reported
 here, and `mureo repair platform-key` and the Reports view cannot give an
@@ -491,7 +492,7 @@ the unrecognisable key does.
 **Two rows with different labels can still be one platform.** A plugin
 platform held under both the legacy `plugin:<dist>` key and the canonical
 `plugin:<dist>:<provider>` one renders as two rows carrying two *different*
-labels — `Logly (plugin)` and `Logly Ads Context (plugin)` — because the
+labels — `Acme (plugin)` and `Acme Ads Context (plugin)` — because the
 legacy key can only be labelled from the distribution while the canonical one
 names the provider. Both keys resolve, so neither is flagged
 `unrecognized_key`; when the two entries carry the same `account_id` the
@@ -504,7 +505,7 @@ naming it: `mureo repair platform-key --key <the key to remove>
 --drop-duplicate` (dry run first; `--apply` makes the change).
 
 The bare provider name is the third spelling of that same platform, and it
-renders *identically* to the canonical key (`Logly Ads Context (plugin)`) —
+renders *identically* to the canonical key (`Acme Ads Context (plugin)`) —
 it is the same platform from the same plugin, so a second label would be a
 fiction. Two rows sharing one label therefore mean two entries for one
 platform, which is what the `duplicate_account` conflict names whenever they
@@ -532,8 +533,8 @@ What the dashboard does about it:
 #### Repairing an entry filed under a key mureo cannot resolve
 
 Detection is right for the general case and still leaves one gap: a key that
-names **no platform at all** (`logly_ads` for a bridge whose provider is
-`logly_ads_context`). There is no question about which of two platforms the
+names **no platform at all** (`acme` for a bridge whose provider is
+`acme_ads_context`). There is no question about which of two platforms the
 data belongs to, because only one of the two keys names a platform — so that
 case has a supported repair mureo performs on its own judgement. When both
 keys are real the judgement is yours, and `--drop-duplicate` is where you
@@ -547,10 +548,10 @@ mureo repair platform-key
 mureo repair platform-key --apply
 
 # Narrow it to one key, or point at another workspace's file.
-mureo repair platform-key --key logly_ads --state-file ./client-a/STATE.json
+mureo repair platform-key --key acme --state-file ./client-a/STATE.json
 
 # Both keys real? Name the one YOU decided is wrong. Dry run first.
-mureo repair platform-key --key plugin:mureo-logly-bridge --drop-duplicate
+mureo repair platform-key --key plugin:mureo-acme-bridge --drop-duplicate
 
 # Or sweep every client this machine knows about, summary first.
 mureo repair platform-key --all
@@ -1033,9 +1034,11 @@ to render order:
 |------|---------|---------------|-------------|
 | 1 | Totals double-counted | One ad account under two platform keys — the client's totals are withheld right now | `mureo repair platform-key --key <the key to remove> --drop-duplicate` |
 | 2 | Totals stale | The newest figures pre-date the window on screen, so they are not its answer | `/sync-state` for that client |
-| 3 | Not collected | A collection failed and said why. The figures have not aged out yet, and this is the cheapest moment to fix it | clear the stated cause, then `/sync-state` |
-| 4 | Unrecognised key | mureo cannot resolve an entry to a platform, so the client cannot be fully checked for a duplicate | `mureo repair platform-key` |
-| 5 | Observation due | A change mureo made is past its review date | `/daily-check` for that client |
+| 3 | Report flag | An analysis skill flagged the client's latest report at warning or danger grade (informational and positive flags raise nothing). Not raised while the client's totals are withheld | open that client's report to see what the finding is based on |
+| 4 | Regressed change | A change in the last 30 days was evaluated as regressed and was not rolled back (see [Ops history](ops-history.md)) | review the regressed changes in that client's ops history |
+| 5 | Not collected | A collection failed and said why. The figures have not aged out yet, and this is the cheapest moment to fix it | clear the stated cause, then `/sync-state` |
+| 6 | Unrecognised key | mureo cannot resolve an entry to a platform, so the client cannot be fully checked for a duplicate | `mureo repair platform-key` |
+| 7 | Observation due | A change mureo made is past its review date | `/daily-check` for that client |
 
 Three properties are load-bearing, and each is pinned by a test:
 
@@ -1089,9 +1092,11 @@ is in the alert row directly above the grid, and the remedy is on the
 client's own detail view, where the per-platform conflict note has always
 named it.
 
-Four of the five findings are already on the wire per client (`freshness`,
-`not_collected`, `platform_conflicts`). The fifth is not, and cannot be
-derived in the browser: `recent_actions` is capped at the 20 most recent
+Five of the seven findings are already on the wire per client (`freshness`,
+`not_collected`, `platform_conflicts`, and the flags in `reports`). A
+regressed change is counted server-side into the summary's `ops_history`
+object (see [Ops history](ops-history.md#the-client-list)). The seventh,
+observation due, cannot be derived in the browser: `recent_actions` is capped at the 20 most recent
 entries, and it carries neither `rollback_of` nor `evaluation_of`, so a
 count taken from it would both under-report a long log and keep asking for
 reviews that were already done. The summary therefore carries
@@ -1142,8 +1147,9 @@ card.
 
 The grid can also be filtered to *needs attention* / *watch* / *nothing
 raised*. That verdict is the triage layer's own findings and not a fourth
-judgement: the two withholding findings (ranks 1–2 above) make a client
-*needs attention*, the rest make it *watch*, and a client that raised
+judgement: totals double-counted, totals stale, a regressed change and a
+danger-grade report flag make a client *needs attention*, the rest make it
+*watch*, and a client that raised
 nothing is *nothing raised* — which says only that mureo has nothing to
 raise about the state of its data, never that the account is performing
 well. Cards are hidden by the filter, never removed, so your own card order
@@ -1714,10 +1720,11 @@ so it opens its one client's report either way.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | `string` | Schema version (`"2"` for multi-platform format) |
+| `version` | `string` | Schema version string, carried as found (new files are written with `"1"` even when they hold `platforms`) |
 | `last_synced_at` | `string \| null` | ISO 8601 timestamp of last sync |
 | `platforms` | `object \| null` | Per-platform state (v2) |
 | `action_log` | `array` | Log of actions with outcome tracking |
+| `reports` | `object \| null` | Analysis summaries keyed by report kind (see "Which kinds exist" above). Absent until one is written |
 | `workspace_not_collected` | `object \| null` | Why the whole workspace could not be collected (see above). Absent until such a failure is recorded |
 | `batches` | `array` | Declared bulk change sets (see below). Absent until the first `mureo_batch_begin` |
 | `display` | `object \| null` | The write-guarded surface the dashboard renders (see [The display contract](#the-display-contract-706)). Absent until one is written, and absent again once it is cleared |
@@ -1737,6 +1744,7 @@ so it opens its one client's report either way.
 | `bidding_details` | `object` | No | Strategy-specific details |
 | `campaign_type` | `string` | No | The platform's own name for the campaign type, verbatim (Google Ads `advertising_channel_type`, e.g. `SEARCH`; Meta `objective`, e.g. `OUTCOME_LEADS`). Omitted for a platform without the concept |
 | `daily_budget` | `number` | No | Daily budget amount |
+| `monthly_budget` | `number` | No | The campaign's own monthly budget, where the platform has one (#656) |
 | `device_targeting` | `array` | No | Device bid modifiers |
 | `campaign_goal` | `string` | No | Human-readable campaign goal |
 | `notes` | `string` | No | Free-form notes |
@@ -1774,15 +1782,23 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 | `summary` | `string` | No | Human-readable summary. On an evaluation record (`evaluation_of`) it is built from `evaluation`, by the automatic closure or by the append; a passed value is replaced |
 | `metrics_at_action` | `object` | No | The baseline: key metrics at the time of action (e.g., `{"cpa": 5200, "conversions": 45, "period": "LAST_30_DAYS"}`). When it is omitted on an entry with a `campaign_id` that mureo made (no `origin`, no `evaluation_of`), `mureo_state_action_log_append` fills it from that campaign's `metrics` — copied whole, plus `days` from `period` — when they were fetched at most 2 days ago and are dated at most a day ahead (#890). A value you pass is stored as given: use the canonical names above and a `period` |
 | `observation_due` | `string` | No | ISO 8601 date when the outcome should be evaluated (e.g., `"2026-04-15"`) |
+| `reversible_params` | `object` | No | How to reverse this action: `{operation, params, caveats}`, read by `rollback_plan_get`. `operation` must be a tool the rollback planner allows. Absent means the action was not marked reversible |
+| `rollback_of` | `integer` | No | Positional index (into the full, append-only `action_log`) of the action this entry reverses. Marks that action as rolled back |
+| `evaluation_of` | `integer` | No | Positional index of the action whose `observation_due` this entry evaluates and closes, taking it out of the pending set. Absent means this entry is not an evaluation record |
+| `entity_type` / `entity_id` | `string` | No | Sub-campaign identity for a target that is not an ad (ad group, ad set, placement). A pair — one without the other is refused |
 | `batch_id` | `string` | No — server-stamped | The bulk change set this action belongs to. Stamped automatically while a batch is open (see below). You may supply it as an explicit assertion, but it is **validated**: it must name a declared batch that is still open, so membership can neither be invented nor added to a batch already closed. Absent means the action was standalone |
 | `origin` | `string` | No | `"external"` when mureo only **observed** this change (imported from a platform's change feed, #545). **Absent means mureo made it** — which is every entry written before this field existed. mureo refuses to plan a rollback for an external entry: it never dispatched the change, so it never captured the prior value |
 | `external_id` | `string` | No | The change feed's identity for an external change, namespaced by platform (`"google_ads\|customers/…/changeEvents/…"`). What makes re-importing the same change a no-op. Requires `origin: "external"` — setting it without one raises, because an external id on a mureo-originated entry would make the next import skip mureo's own action |
 | `display_title` | `string` | No | What this action was, in a few words an operator reads on a dashboard row (≤40 characters). Over the bound the append is **refused**, never truncated |
 | `display_summary` | `string` | No | One plain-text sentence under the title (≤120 characters) — no markdown, since `**bold**` is shown to a person as asterisks. It *adds* a rendering: `summary` is still written as fully as the next agent needs, and is what the drill-down shows |
 | `occurred_at` | `string` | No | When the **platform** says an external change happened, which is routinely well before mureo saw it. The one date the server does not stamp — it cannot know it — but history, never a claim about "now". `observation_due` is measured from it, so a change that has been live for three weeks is already past due rather than due in a fortnight |
+| `reason` | `string` | No | Why this change was made. A value on the entry wins; otherwise it is taken from the mutating call's `reason`, which an `origin: "external"` entry never inherits. ≤500 characters, refused rather than truncated; secret-shaped substrings are redacted. See [Ops history](ops-history.md) |
+| `session_id` | `string` | No — server-stamped | The journal session of the process that wrote the entry, the same id its `JOURNAL.jsonl` records carry. An explicit value is kept |
+| `client` | `string` | No — server-stamped | The MCP client label, `null` for a CLI or library write |
 | `decision_id` | `string` | No — server-stamped | The decision this change carried out (#848): the `decision_id` of the **first** record of its `supersedes` chain, so it stays stable when the decision is updated. Stamped when the change is linked (see [Ops history](ops-history.md)); supplied explicitly it must name a `proposed` or `adopted` decision. An evaluation record (`evaluation_of`) — the automatic closure's `outcome_evaluated` entry or one appended with `mureo_state_action_log_append` — inherits it from the entry it evaluates; a value passed on it is replaced |
 | `applied_params` | `object` | No — server-stamped | The parameters the call that made the change sent (#848), masked like the journal's `args`. Stamped when the entry is appended during a mutating call; absent otherwise, and when the masked parameters exceed 4,000 characters of JSON. The ops history view reads it as the change's `after` |
 | `evaluation` | `object` | With `evaluation_of` | On every evaluation record: written by the automatic closure, or passed on `mureo_state_action_log_append` as the `evaluation` `mureo_outcome_evaluate` returned, unchanged — required there with `evaluation_of` (`evaluation_required`), refused without it (`evaluation_without_target`), shape-checked (a table with no rows is refused: `no_comparable_metric`). The evaluation table `{rules, overall, basis, primary, reason?, noise_pct, window: {from, to}, metrics: [{metric, before, after, delta_pct, verdict, note, role}], expected_missing?}`. ONE primary metric decides `overall` (#888, see [Ops history](ops-history.md)); every other metric is `reference`. `control` and `skipped_reason` are reserved and not written yet |
+| `approval` | `object` | No | External approval `{reference, approved_by, approved_at}` this change carried out: recorded and shown, never verified. See [External approval](ops-history.md#external-approval) |
 
 An imported (`origin: "external"`) entry deliberately carries **no** `metrics_at_action`: mureo was not present when the change was made, so there is no baseline, and synthesising one from today's numbers would invent a "before" that never existed. Those entries are reviewed qualitatively. Which platforms mureo can import from — and what each feed omits — is in [`docs/change-import.md`](change-import.md).
 
@@ -1849,6 +1865,7 @@ Each entry in `decisions` is one decision as it stood at one moment (#758, phase
 | `applied_params` | `object` | No — server-written | On a record mureo writes for a call that carried the decision out (#848): the parameters the call sent, masked |
 | `journal_call_id` | `string` | No — server-written | On the same records: the `call_id` of the call's `JOURNAL.jsonl` record, which names this decision in turn |
 | `journal_tool` | `string` | No — server-written | On a record written for a call that wrote no `action_log` entry: the call's tool name |
+| `approval` | `object` | No — server-written | On a record mureo writes for a call that carried the decision out: the external approval `{reference, approved_by, approved_at}` that call stated, recorded and shown, never verified. See [External approval](ops-history.md#external-approval) |
 
 Every bound above **refuses** the write rather than truncating it: the caller still holds the sentence and can shorten it, while half a rationale reads as a defect and nobody downstream can tell what was cut. `decision_id` is unique — a second record under an id already on file is refused, because that is what `supersedes` joins on.
 
@@ -1905,7 +1922,7 @@ snapshot = CampaignSnapshot(
     status="PAUSED",
     daily_budget=3000,
 )
-doc = upsert_campaign(path, snapshot)
+doc = upsert_campaign(path, snapshot, platform="google_ads", account_id="1234567890")
 
 # Parse from string / render to string
 text = Path("STATE.json").read_text()

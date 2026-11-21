@@ -103,6 +103,7 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 | `GOOGLE_ADS_CLIENT_SECRET` | Yes | OAuth 2.0 client secret |
 | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | OAuth 2.0 refresh token |
 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | No | Manager account (MCC) customer ID |
+| `GOOGLE_ADS_CUSTOMER_ID` | No | Target `customer_id`. If omitted, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` is used. |
 
 ### Meta Ads
 
@@ -111,6 +112,7 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 | `META_ADS_ACCESS_TOKEN` | Yes | Graph API access token |
 | `META_ADS_APP_ID` | No | Meta App ID |
 | `META_ADS_APP_SECRET` | No | Meta App Secret |
+| `META_ADS_TOKEN_OBTAINED_AT` | No | When the token was obtained (ISO 8601), used by [auto-refresh](#meta-ads-token-auto-refresh) |
 
 ### Amazon Ads
 
@@ -371,10 +373,10 @@ Generate one (4 steps):
 4. Copy the generated token.
 
 **Entering the token in the configure UI.** In the Meta Ads authentication step
-of `mureo configure`, open **"Paste a system-user token"** (next to *Login with
+of `mureo configure`, open **"Paste a system-user token"** (next to *Log in with
 Facebook*), paste the token, click **Validate token** (this reports the granted
 vs missing scopes and lists the ad accounts the token can reach), pick the ad
-account, then **Save**.
+account, then **Save token**.
 
 **Most of these tokens expire.** Business settings offers a **60-day** expiry
 for a new system-user token; a token issued without one does not expire at
@@ -518,7 +520,10 @@ reaches you in the morning report rather than in a failed run.
 
 1. **Google Ads OAuth** -- Enter Client ID/Secret (developer token optional), open browser for OAuth, select account.
 2. **Meta Ads OAuth** -- Enter App ID/Secret, open browser for OAuth, obtain Long-Lived Token, select account.
-3. **MCP configuration** -- Choose global (`~/.claude/settings.json`) or project-level (`.mcp.json`).
+3. **MCP configuration** -- Choose global (Claude Code user scope, `~/.claude.json`) or project-level (`.mcp.json`).
+4. **Credential guard** -- Installs the PreToolUse hook that blocks AI agents from reading `~/.mureo/credentials.json`.
+
+Amazon Ads has no terminal prompt; the wizard points you to the Amazon Ads card in `mureo configure`.
 
 ### Project-Level MCP Configuration (`.mcp.json`)
 
@@ -528,12 +533,15 @@ If you choose project-level placement, `mureo auth setup` creates a `.mcp.json` 
 {
   "mcpServers": {
     "mureo": {
-      "command": "python",
+      "type": "stdio",
+      "command": "/absolute/path/to/python",
       "args": ["-m", "mureo.mcp"]
     }
   }
 }
 ```
+
+`command` is the absolute path of the Python interpreter mureo is installed in. A bare `python` would resolve to whatever is on the AI agent's own `PATH`, which may not have mureo, and the MCP server would fail to start.
 
 AI agents that support `.mcp.json` (e.g., Claude Code) will automatically discover and connect to the mureo MCP server when working in that project directory.
 
@@ -542,7 +550,7 @@ AI agents that support `.mcp.json` (e.g., Claude Code) will automatically discov
 Use the `mureo auth` commands to verify your setup:
 
 ```bash
-# Show authentication status for all platforms
+# Show authentication status for Google, Meta and Amazon Ads
 mureo auth status
 
 # Check Google Ads credentials (shows masked values)
@@ -550,6 +558,12 @@ mureo auth check-google
 
 # Check Meta Ads credentials (shows masked values)
 mureo auth check-meta
+
+# Check Amazon Ads credentials (shows masked values)
+mureo auth check-amazon
+
+# Re-authenticate Google to add Search Console and GA4 read-only access
+mureo auth upgrade-google
 ```
 
 Example output for `mureo auth status`:
@@ -557,8 +571,9 @@ Example output for `mureo auth status`:
 ```
 === Authentication Status ===
 
-Google Ads: Authenticated
-Meta Ads: Authenticated
+Google Ads: Authenticated (customer_id: 0000000000)
+Meta Ads: Authenticated (account_id: act_0000000000)
+Amazon Ads: Not authenticated
 ```
 
 Example output for `mureo auth check-google`:
@@ -566,10 +581,11 @@ Example output for `mureo auth check-google`:
 ```json
 {
   "developer_token": "***************abcd",
-  "client_id": "123456789.apps.googleusercontent.com",
+  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
   "client_secret": "***************wxyz",
   "refresh_token": "***************efgh",
-  "login_customer_id": "1234567890"
+  "login_customer_id": "0000000000",
+  "customer_id": "0000000000"
 }
 ```
 

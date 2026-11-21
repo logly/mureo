@@ -17,7 +17,7 @@ The server communicates over stdin/stdout using the MCP JSON-RPC protocol. It is
 
 ### Claude Desktop
 
-Add to your MCP configuration (`~/.config/claude/mcp.json` or the app's settings):
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS), or run `mureo install-desktop`:
 
 ```json
 {
@@ -89,6 +89,8 @@ Or use `uv` to run it:
 
 ## Tool Reference
 
+> **`customer_id`** (Google Ads) and **`account_id`** (Meta Ads) are listed in the "Required Parameters" column below but are optional in the schema: when omitted they fall back to the configured credentials. Every other entry in those tables is a schema-required field, or one of the alternatives named with "one of".
+
 ### Google Ads
 
 #### Campaigns
@@ -159,8 +161,8 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_budget_get` | Get campaign budget | `customer_id`, `campaign_id` |
-| `google_ads_budget_update` | Update budget | `customer_id`, `budget_id`, `amount` |
-| `google_ads_budget_create` | Create a new campaign budget | `customer_id`, `name`, `amount` |
+| `google_ads_budget_update` | Update budget | `customer_id`, `budget_id`, one of `amount` / `amount_micros` / `total_amount` / `total_amount_micros` |
+| `google_ads_budget_create` | Create a new campaign budget | `customer_id`, `name`, one of `amount` / `total_amount` / `total_amount_micros` |
 
 #### Accounts
 
@@ -180,8 +182,8 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_sitelinks_list` | List sitelink extensions | `customer_id`, `campaign_id` |
-| `google_ads_sitelinks_create` | Create a sitelink extension | `customer_id`, `campaign_id`, `sitelink_text`, `final_url` |
-| `google_ads_sitelinks_remove` | Remove a sitelink extension | `customer_id`, `campaign_id`, `extension_id` |
+| `google_ads_sitelinks_create` | Create a sitelink extension | `customer_id`, `campaign_id`, `link_text`, `final_url` |
+| `google_ads_sitelinks_remove` | Remove a sitelink extension | `customer_id`, `campaign_id`, `asset_id` |
 
 #### Callouts
 
@@ -189,7 +191,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 |------|-------------|-------------------|
 | `google_ads_callouts_list` | List callout extensions | `customer_id`, `campaign_id` |
 | `google_ads_callouts_create` | Create a callout extension | `customer_id`, `campaign_id`, `callout_text` |
-| `google_ads_callouts_remove` | Remove a callout extension | `customer_id`, `campaign_id`, `extension_id` |
+| `google_ads_callouts_remove` | Remove a callout extension | `customer_id`, `campaign_id`, `asset_id` |
 
 #### Conversions
 
@@ -198,7 +200,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | `google_ads_conversions_list` | List conversion actions | `customer_id` |
 | `google_ads_conversions_get` | Get conversion action details | `customer_id`, `conversion_action_id` |
 | `google_ads_conversions_performance` | Get conversion performance metrics | `customer_id` |
-| `google_ads_conversions_create` | Create a conversion action | `customer_id`, `name`, `type` |
+| `google_ads_conversions_create` | Create a conversion action | `customer_id`, `name` |
 | `google_ads_conversions_update` | Update a conversion action | `customer_id`, `conversion_action_id` |
 | `google_ads_conversions_remove` | Remove a conversion action | `customer_id`, `conversion_action_id` |
 | `google_ads_conversions_tag` | Get conversion tracking tag snippet | `customer_id`, `conversion_action_id` |
@@ -208,11 +210,11 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_recommendations_list` | List optimization recommendations | `customer_id` |
-| `google_ads_recommendations_apply` | Apply an optimization recommendation | `customer_id`, `recommendation_id` |
+| `google_ads_recommendations_apply` | Apply an optimization recommendation | `customer_id`, `resource_name` |
 | `google_ads_device_targeting_get` | Get device targeting settings | `customer_id`, `campaign_id` |
-| `google_ads_device_targeting_set` | Set device targeting bid adjustments | `customer_id`, `campaign_id`, `device_type`, `bid_modifier` |
+| `google_ads_device_targeting_set` | Enable/disable delivery per device (bid_modifier 1.0/0.0) | `customer_id`, `campaign_id`, `enabled_devices` |
 | `google_ads_bid_adjustments_get` | Get bid adjustment settings | `customer_id`, `campaign_id` |
-| `google_ads_bid_adjustments_update` | Update bid adjustments | `customer_id`, `campaign_id` |
+| `google_ads_bid_adjustments_update` | Update bid adjustments | `customer_id`, `campaign_id`, `criterion_id`, `bid_modifier` |
 | `google_ads_location_targeting_list` | List location targeting criteria | `customer_id`, `campaign_id` |
 | `google_ads_location_targeting_update` | Update location targeting | `customer_id`, `campaign_id` |
 | `google_ads_schedule_targeting_list` | List ad schedule targeting | `customer_id`, `campaign_id` |
@@ -226,7 +228,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_performance_report` | Get performance report | `customer_id` |
-| `google_ads_performance_analyze` | Analyze performance trends and anomalies | `customer_id` |
+| `google_ads_performance_analyze` | Analyze performance trends and anomalies | `customer_id`, `campaign_id` |
 | `google_ads_cost_increase_investigate` | Investigate sudden cost increases | `customer_id`, `campaign_id` |
 | `google_ads_health_check_all` | Run a comprehensive account health check | `customer_id` |
 | `google_ads_ad_performance_compare` | Compare ad performance across variants | `customer_id`, `ad_group_id` |
@@ -236,7 +238,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | `google_ads_budget_reallocation` | Suggest budget reallocation across campaigns | `customer_id` |
 | `google_ads_auction_insights_get` | Get auction insights (competitor analysis) | `customer_id`, `campaign_id` |
 | `google_ads_auction_insights_analyze` | Interpret impression-share metrics into human-readable competitive-position insights | `customer_id`, `campaign_id` |
-| `google_ads_rsa_assets_analyze` | Analyze RSA asset performance | `customer_id`, `ad_group_id` |
+| `google_ads_rsa_assets_analyze` | Analyze RSA asset performance | `customer_id`, `campaign_id` |
 | `google_ads_rsa_assets_audit` | Audit RSA assets for best practices | `customer_id`, `campaign_id` |
 | `google_ads_search_terms_review` | Review search terms with rule-based scoring | `customer_id`, `campaign_id` |
 
@@ -244,23 +246,23 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `google_ads_btob_optimizations` | Get B2B-specific optimization suggestions | `customer_id` |
+| `google_ads_btob_optimizations` | Get B2B-specific optimization suggestions | `customer_id`, `campaign_id` |
 
 #### Creative
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `google_ads_landing_page_analyze` | Analyze landing page relevance and quality | `customer_id`, `campaign_id` |
-| `google_ads_creative_research` | Research competitive creative strategies | `customer_id` |
+| `google_ads_landing_page_analyze` | Analyze landing page relevance and quality | `customer_id`, `url` |
+| `google_ads_creative_research` | Research competitive creative strategies | `customer_id`, `campaign_id`, `url` |
 
 #### Monitoring
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_monitoring_delivery_goal` | Monitor campaign delivery against goals | `customer_id`, `campaign_id` |
-| `google_ads_monitoring_cpa_goal` | Monitor CPA against target goals | `customer_id`, `campaign_id` |
-| `google_ads_monitoring_cv_goal` | Monitor conversion volume against goals | `customer_id`, `campaign_id` |
-| `google_ads_monitoring_zero_conversions` | Detect campaigns with zero conversions | `customer_id` |
+| `google_ads_monitoring_cpa_goal` | Monitor CPA against target goals | `customer_id`, `campaign_id`, `target_cpa` |
+| `google_ads_monitoring_cv_goal` | Monitor conversion volume against goals | `customer_id`, `campaign_id`, `target_cv_daily` |
+| `google_ads_monitoring_zero_conversions` | Diagnose a campaign with zero conversions | `customer_id`, `campaign_id` |
 
 #### Capture
 
@@ -366,7 +368,7 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_ad_sets_list` | List ad sets | `account_id` |
-| `meta_ads_ad_sets_create` | Create an ad set | `account_id`, `campaign_id`, `name`, `daily_budget` |
+| `meta_ads_ad_sets_create` | Create an ad set | `account_id`, `campaign_id`, `name` |
 | `meta_ads_ad_sets_update` | Update an ad set | `account_id`, `ad_set_id` |
 | `meta_ads_ad_sets_get` | Get ad set details | `account_id`, `ad_set_id` |
 | `meta_ads_ad_sets_pause` | Pause an ad set | `account_id`, `ad_set_id` |
@@ -388,12 +390,12 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_creatives_list` | List ad creatives | `account_id` |
-| `meta_ads_creatives_create` | Create a standard ad creative (single image **or video**) | `account_id`, `name` |
+| `meta_ads_creatives_create` | Create a standard ad creative (single image **or video**) | `account_id`, `name`, `page_id`, `link_url` |
 | `meta_ads_creatives_create_carousel` | Create a carousel creative (2-10 cards) | `account_id`, `page_id`, `cards`, `link` |
 | `meta_ads_creatives_create_collection` | Create a collection creative | `account_id`, `page_id`, `product_ids`, `link` |
-| `meta_ads_creatives_create_dynamic` | Create a dynamic product ad creative | `account_id`, `catalog_id` |
+| `meta_ads_creatives_create_dynamic` | Create a dynamic product ad creative | `account_id`, `name`, `page_id`, `image_hashes`, `bodies`, `titles`, `link_url` |
 | `meta_ads_creatives_create_lead` | Create a Lead Ad creative attached to an Instant Form | `account_id`, `name`, `page_id`, `form_id`, `link_url` |
-| `meta_ads_creatives_upload_image` | Upload an image for use in creatives | `account_id`, `file_path` |
+| `meta_ads_creatives_upload_image` | Upload an image from a public HTTPS URL | `account_id`, `image_url` |
 
 #### Images
 
@@ -413,10 +415,10 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_audiences_list` | List custom audiences | `account_id` |
-| `meta_ads_audiences_create` | Create a custom audience | `account_id`, `name`, `subtype` |
+| `meta_ads_audiences_create` | Create a custom audience | `account_id`, `name` |
 | `meta_ads_audiences_get` | Get audience details | `account_id`, `audience_id` |
 | `meta_ads_audiences_delete` | Delete a custom audience | `account_id`, `audience_id` |
-| `meta_ads_audiences_create_lookalike` | Create a lookalike audience | `account_id`, `source_audience_id`, `country` |
+| `meta_ads_audiences_create_lookalike` | Create a lookalike audience | `account_id`, `name`, `source_audience_id`, `country`, `ratio` |
 
 #### Targeting Discovery
 
@@ -448,11 +450,11 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_analysis_performance` | Analyze overall performance trends | `account_id` |
-| `meta_ads_analysis_audience` | Analyze audience performance and overlap | `account_id` |
-| `meta_ads_analysis_placements` | Analyze placement performance breakdown | `account_id` |
-| `meta_ads_analysis_cost` | Analyze cost trends and efficiency | `account_id` |
-| `meta_ads_analysis_compare_ads` | Compare performance across ads | `account_id` |
-| `meta_ads_analysis_suggest_creative` | Suggest creative improvements based on data | `account_id` |
+| `meta_ads_analysis_audience` | Analyze audience performance and overlap | `account_id`, `campaign_id` |
+| `meta_ads_analysis_placements` | Analyze placement performance breakdown | `account_id`, `campaign_id` |
+| `meta_ads_analysis_cost` | Analyze cost trends and efficiency | `account_id`, `campaign_id` |
+| `meta_ads_analysis_compare_ads` | Compare performance across ads | `account_id`, `ad_set_id` |
+| `meta_ads_analysis_suggest_creative` | Suggest creative improvements based on data | `account_id`, `campaign_id` |
 
 #### Placement Exclusions
 
@@ -671,6 +673,10 @@ Cross-platform analysis that operates on data the caller supplies — an `action
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. The baseline is per day: counts in an entry that states its window (`days`, or a `period` such as `LAST_30_DAYS`) are divided by it, an entry that states none counts as one day, and `cost` / `spend` are one figure. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
 | `analysis_delivery_collapse_check` | Flag campaigns whose impressions fell off a cliff while their status still says they should be serving. Baseline comes from the supplied day-grain rows, **not** from `action_log`. | `platform`, `rows` |
 | `analysis_delivery_collapse_diagnose` | Overlay a change feed on one campaign's daily delivery, fold in elimination-ladder evidence, and report the cause **and** the open questions. `change_lookback_days` (default 3) and `timeline_days` (default 21) are settable — widen the lookback for a cause with a delayed effect. | `platform`, `campaign_id`, `rows` |
+| `analysis_exclusion_impact_preview` | Size a bulk exclusion / block / negative-keyword batch before applying it: what share of the recent window's impressions, clicks, cost and conversions the excluded entities carried, incrementally and cumulatively. Returns `would_block` from the same rule the dispatcher enforces. | either `tool` (+ `arguments`) or `excluded_entities` |
+| `analysis_tracking_consistency_check` | Audit final-URL tracking parameters across ad records from any platform. Returns findings with `severity`, `delivery_state` (`served` / `not_served` / `unknown`), the ad ids and the evidence — a utm scheme belonging to exactly one other campaign, one landing page under two schemes, a parameter the rest of the campaign carries, and violations of a `## Tracking Convention` declared in STRATEGY.md. Pass `planned_ads` to pre-flight ads before creating them. | `ads` |
+
+`had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
 
 #### Delivery collapse (#546)
 
@@ -736,8 +742,6 @@ Two blind spots follow from that rule, both listed in the diagnosis `limitations
 - Several campaigns collapsing on the same day is reported as a correlation only.
 
 `next_checks` names the mureo tool for each open step on platforms that have one, and an empty string where mureo has no tool at all (billing everywhere; bid competitiveness and learning state on Meta) rather than inventing one.
-| `analysis_exclusion_impact_preview` | Size a bulk exclusion / block / negative-keyword batch before applying it: what share of the recent window's impressions, clicks, cost and conversions the excluded entities carried, incrementally and cumulatively. Returns `would_block` from the same rule the dispatcher enforces. | either `tool` (+ `arguments`) or `excluded_entities` |
-| `analysis_tracking_consistency_check` | Audit final-URL tracking parameters across ad records from any platform. Returns findings with `severity`, `delivery_state` (`served` / `not_served` / `unknown`), the ad ids and the evidence — a utm scheme belonging to exactly one other campaign, one landing page under two schemes, a parameter the rest of the campaign carries, and violations of a `## Tracking Convention` declared in STRATEGY.md. Pass `planned_ads` to pre-flight ads before creating them. | `ads` |
 
 #### `analysis_exclusion_impact_preview` (#547)
 
@@ -772,7 +776,7 @@ Per-surface attribution:
 | `google_ads_negative_placements_add` | `group_placement_view` over the window | Yes for `website` / `mobile_application`; `mobile_app_category` is not a placement that serves, so a mixed batch reports `partial` |
 | `google_ads_negative_keywords_add` / `_add_to_ad_group` | `search_term_view` over the window, matched per `EXACT` / `PHRASE` / `BROAD` | Yes. Negative keywords do not match close variants and neither does the estimate, so it is a lower bound |
 | `meta_ads_excluded_placements_set` | — | **No.** No insights breakdown attributes past delivery to publisher categories, publisher block lists or brand-safety content types. Reported `unknown` |
-| Plugin / bridged surfaces (Yahoo, LINE, SmartNews, LOGLY, Amazon) | Whatever the provider registers via `register_exclusion_surface`, else caller-supplied `delivery_records` | Provider-declared |
+| Plugin platforms registered through the provider ABI, and Amazon Ads (bridge) | Whatever the provider registers via `register_exclusion_surface`, else caller-supplied `delivery_records` | Provider-declared |
 
 **Cumulative tightening.** `cumulative` is the share attributable to the whole
 standing exclusion set once this batch lands, which is what catches a fortnight
@@ -803,8 +807,6 @@ awaited platform read and the `PolicyGate` v1 ABI is synchronous by design and
 must stay pure and fast. With none of them written the check does no I/O at all
 and behaviour is unchanged. `MUREO_DISABLE_EXCLUSION_PREFLIGHT=1` turns it off
 entirely.
-
-`had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
 
 `analysis_tracking_consistency_check` takes ad records (`ad_id`, `campaign_id`, `final_urls`, `platform`, optional `campaign_name` / `status` / `impressions`) that the caller assembles from `google_ads_ads_list`, `meta_ads_ads_list`, a plugin's own list tool or a bridged MCP — so a platform mureo cannot fetch ads for is still auditable whenever the agent can list them. Ads are only compared with ads carrying the same `platform` value. `impressions` grades the finding: `>0` makes it a data-integrity incident (`critical`), `0` a cheap fix (`high`), and omitting it leaves `delivery_state: unknown` with a note saying the severity may be understated — omitted is not `0`. Ads whose URL could not be read are listed in `ads_without_readable_url` rather than reported clean. See [docs/tracking-consistency.md](tracking-consistency.md) for the full list of what is and is not detectable.
 
@@ -860,7 +862,7 @@ The closure entry is the same record a diligent agent would have written: `actio
 
 The freshness rule trusts `fetched_at` as the collector wrote it — mureo cannot verify when a platform's figures were actually read, so a collector that stamps a wrong date produces a wrong closure. That is the same trust the dashboard already places in the snapshot it renders; nothing here widens it, but nothing here checks it either.
 
-The write asks the policy gates the same question a `mureo_state_action_log_append` call would: a host that runs a read-only gate (mureo-agency's, for example) gets `auto_evaluation_skipped` entries reading `write_denied: <the gate's own sentence>` and STATE.json is left untouched. A read tool must not do what the host forbids a write tool to do. Nothing is written when nothing is due either — the lock is not even taken — so a repeated `mureo_state_get` leaves the file byte-identical.
+The write asks the policy gates the same question a `mureo_state_action_log_append` call would: a host that runs a read-only gate gets `auto_evaluation_skipped` entries reading `write_denied: <the gate's own sentence>` and STATE.json is left untouched. A read tool must not do what the host forbids a write tool to do. Nothing is written when nothing is due either — the lock is not even taken — so a repeated `mureo_state_get` leaves the file byte-identical.
 
 `auto_evaluate: false` turns the whole pass off; both response keys are then **omitted** rather than empty, because "mureo closed nothing" and "mureo did not look" are different answers. When the pass does run, both keys are always present. If it fails for any reason the response carries `auto_evaluation_error` (`"<ExceptionType>: <message>"`, logged server-side with its traceback) and the document is returned unchanged — `mureo_state_get` is the call every skill starts from and must never fail on this.
 
@@ -901,10 +903,10 @@ Read-only: it calls no platform API and changes nothing.
 | Surface | When | Strength |
 |---|---|---|
 | `## Guardrails` `block_learning_resets` / `block_learning_resets_during_incident` | before dispatch | **hard** — the call is refused by `StrategyPolicyGate`, before any API call |
-
-`block_learning_resets` is an account-wide freeze: it refuses every reset-triggering change, with or without an identifiable campaign. `block_learning_resets_during_incident` is narrower by name and in fact — it refuses only a change that **identifies a campaign** which is not positively known to be out of a learning period. An unknown state on an identified campaign is refused (fail-closed); a change that identifies no campaign at all (`google_ads_conversions_*` is account-level, `google_ads_budget_update` is keyed on a `budget_id`) has no subject and is not refused, or the rule would permanently block editing a conversion action with no relation to any incident.
 | `mureo_learning_reset_preflight` | before the change, when the agent calls it | advisory — as strong as the agent's compliance |
 | A notice appended to a reset-triggering call's own result | after that call | records the reset so the *next* change in the sequence is not made blind |
+
+`block_learning_resets` is an account-wide freeze: it refuses every reset-triggering change, with or without an identifiable campaign. `block_learning_resets_during_incident` is narrower by name and in fact — it refuses only a change that **identifies a campaign** which is not positively known to be out of a learning period. An unknown state on an identified campaign is refused (fail-closed); a change that identifies no campaign at all (`google_ads_conversions_*` is account-level, `google_ads_budget_update` is keyed on a `budget_id`) has no subject and is not refused, or the rule would permanently block editing a conversion action with no relation to any incident.
 
 **Per-platform coverage.** Reset triggers are sourced from first-party documentation only; where mureo has no such source it reports `unknown` and never `no_reset`, because a false "this resets nothing" turns a missing warning into implied approval.
 
@@ -914,7 +916,7 @@ Read-only: it calls no platform API and changes nothing.
 | Meta Ads | No — Meta exposes [`learning_stage_info`](https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-learning-stage-info/) on the **ad set**; mureo's client does not request it and STATE.json is campaign-level | No — Meta documents that "significant edits" restart the phase without enumerating them |
 | Amazon Ads (official-MCP bridge) | No — no learning-state read exists on the bridged tool surface | No |
 | ChatGPT Ads (bundled provider) | No — the provider reads no learning state | No — the platform documentation states none, so the provider registers no rules |
-| Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+| Plugin platforms | No — unless the plugin registers rules | No — unless the plugin registers rules |
 
 A plugin or bridge advertises its own platform's rules through `mureo.policy.learning_rules.register_platform_learning_rules`, the same registry pattern the budget/bid declarations use.
 
@@ -1052,7 +1054,7 @@ Server behaviour:
   skipped with a `PluginToolWarning` — it can never crash the server or
   block other plugins. Discovery itself failing wholesale yields zero
   plugin tools rather than a startup error.
-- **Discovered once at server start**, like the env-var gates below.
+- **Discovered once at server start**, like the `MUREO_DISABLE_*` gates (GOOGLE_ADS / META_ADS / CREATIVE_STUDIO / AMAZON_ADS / CHATGPT_ADS).
 
 Plugin tools obey the same `MUREO_DISABLE_*` reasoning only insofar as
 the plugin chooses; the disable env vars gate the built-in families,
@@ -1289,6 +1291,18 @@ Beyond individual MCP tools, mureo provides higher-level operational workflows v
 | `/budget-rebalance` | Mode-guided budget reallocation |
 | `/competitive-scan` | Auction analysis with Market Context |
 | `/sync-state` | Manual STATE.json synchronization |
+| `/ad-fatigue-check` | Creative fatigue scoring (frequency, CTR decline, CPM drift) |
+| `/audience-review` | Targeting and placement audit against the Persona |
+| `/budget-pacing` | Month-to-date spend vs monthly budget, projected landing |
+| `/creative-generate` | Key visuals and banners from a strategy-grounded brief |
+| `/experiment` | Controlled A/B test design, run and evaluation |
+| `/goal-review` | Goal progress against STRATEGY.md targets |
+| `/incident-postmortem` | Postmortem after a rescue or incident |
+| `/lead-form-create` | Guided Meta Instant Form creation |
+| `/learn` | Save a diagnosis insight for future operations |
+| `/monthly-report` | Monthly digest with month-over-month comparison |
+| `/tracking-health` | Preventive conversion-tracking audit |
+| `/weekly-report` | Weekly summary across all platforms |
 
 Each command reads strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) from `STRATEGY.md` and campaign state from `STATE.json`, then selects and invokes the appropriate MCP tools. For example, `/daily-check` adapts its monitoring focus based on the current Operation Mode -- an `EFFICIENCY_STABILIZE` mode prioritizes CPA and budget efficiency, while a `GROWTH_SCALE` mode focuses on impression share and conversion volume.
 
@@ -1521,7 +1535,10 @@ AI agents can issue tool calls at high speed, which risks hitting API rate limit
 | Google Ads | 10 | 5 | -- |
 | Meta Ads | 20 | 10 | 50,000 |
 | Search Console | 5 | 5 | -- |
+| Creative Studio | 1 | 2 | 120 |
+| ChatGPT Ads (per tool) | 8 | 5 | -- |
+| Plugin tools without a declared throttle (shared default bucket) | 5 | 5 | -- |
 
-The throttler uses a **token bucket algorithm** combined with a **rolling hourly cap** (Meta Ads only). When the bucket is empty, the request awaits until a token becomes available -- no errors are raised and no tool calls are dropped.
+The throttler uses a **token bucket algorithm** combined with a **rolling hourly cap** (Meta Ads, Creative Studio). When the bucket is empty, the request awaits until a token becomes available -- no errors are raised and no tool calls are dropped.
 
 Each platform has a module-level singleton throttler that is shared across all MCP tool calls in the same server process. No user configuration is required; throttling is always active.

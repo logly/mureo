@@ -1,4 +1,4 @@
-# mureo native tools vs. official MCP providers (Google, Meta & Amazon)
+# mureo native tools vs. official MCP providers (Google, Meta, Amazon & ChatGPT Ads)
 
 > Status: 2026-09-17. The official ad-platform MCPs are in beta and their tool
 > surface changes over time — re-verify before relying on a specific capability.
@@ -11,8 +11,9 @@ Meta Ads and Search Console (`mureo/google_ads`, `mureo/meta_ads`,
 `mureo/search_console` in this repository). GA4 is **not** native — mureo
 installs Google's official Analytics MCP as the `ga4-official` provider
 (`mureo providers add ga4-official`; see [integrations.md](./integrations.md)).
-Every other platform arrives as a separately distributed, pip-installable
-plugin that mureo discovers through the provider registry (the
+Amazon Ads and ChatGPT Ads ship inside mureo as bundled providers
+(`mureo/bundled_providers.py`); any other platform arrives as a separately
+distributed, pip-installable plugin that mureo discovers through the provider registry (the
 `mureo.providers` entry-point group); see
 [plugin-authoring.md](./plugin-authoring.md). The ad platforms now also publish
 **official MCP servers**, and mureo can install and register those as
@@ -263,7 +264,7 @@ inject the stored values into the provider's MCP entry; when one is missing,
 the CLI prints which names it still needs (#945).
 Removing the official provider clears the flag and re-enables native tools.
 
-- Switch native → official: `mureo providers add <provider>` (or the configure dashboard toggle)
+- Switch native → official: `mureo providers add <provider>` (or the configure dashboard toggle); for a hosted provider (Meta), add the Claude.ai connector, then run `mureo providers confirm <provider>`
 - Switch back: `mureo providers remove <provider>`
 - Search Console has no official MCP — mureo native remains canonical and is never disabled.
 

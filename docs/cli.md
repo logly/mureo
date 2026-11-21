@@ -24,13 +24,14 @@ mureo <subcommand-group> <command> [options]
 | `upgrade` | Upgrade mureo and its plugins (also re-deploys skills) |
 | `byod` | Bring Your Own Data — analyse ad-account data locally, no OAuth |
 | `demo` | Scaffold a self-contained demo workspace |
-| `providers` | Install / list / remove official MCP providers (Google Ads, Meta, GA4). `add` injects the stored credential env into the provider's MCP entry, prints which names are still missing when it cannot authenticate yet, and leaves the native tools active until then |
+| `providers` | Install / list / confirm / remove official MCP providers (Google Ads, Meta, GA4, TikTok Ads). `add` injects the stored credential env into the provider's MCP entry, prints which names are still missing when it cannot authenticate yet, and leaves the native tools active until then |
 | `amazon` | Amazon Ads official-MCP bridge setup |
 | `install-desktop` | Wire mureo into Claude Desktop chat (macOS) |
 | `learn` | Append insights to the diagnostic knowledge base |
 | `journal` | Show the append-only journal of MCP tool calls |
 | `rollback` | Inspect reversible actions recorded in STATE.json |
 | `repair` | Repair STATE.json problems mureo can fix without guessing |
+| `version` | Show the mureo version (same as `mureo --version`) |
 
 Run `mureo --help` to see all available groups.
 
@@ -110,6 +111,9 @@ mureo auth check-google
 # Check Meta Ads credentials (masked output)
 mureo auth check-meta
 
+# Check Amazon Ads credentials (masked output)
+mureo auth check-amazon
+
 # Interactive authentication wizard (terminal prompts)
 mureo auth setup
 
@@ -145,6 +149,47 @@ mureo amazon refresh-manifest
 
 See [amazon-ads.md](amazon-ads.md) for the full walkthrough.
 
+## Provider Commands
+
+`mureo providers` wires official MCP servers into Claude Code (`~/.claude/settings.json`). Run `mureo providers list` for the catalog ids.
+
+```bash
+mureo providers list                          # every catalog entry and its install status
+mureo providers add google-ads-official       # install one (--all for every entry, --dry-run to preview)
+mureo providers confirm meta-ads-official     # once a hosted connector shows Connected, switch the overlapping native tools off
+mureo providers remove google-ads-official    # remove the settings entry (does not uninstall the package)
+```
+
+## Demo Commands
+
+```bash
+mureo demo list                               # registered demo scenarios
+mureo demo init                               # ./mureo-demo with the default scenario (seasonality-trap), imported into ~/.mureo/byod/
+mureo demo init ./my-demo --scenario halo-effect --skip-import
+```
+
+`--force` overwrites a non-empty target and replaces conflicting BYOD data.
+
+## Claude Desktop Command
+
+```bash
+mureo install-desktop                         # workspace defaults to ~/mureo
+mureo install-desktop --workspace ~/ads --with-demo seasonality-trap
+mureo install-desktop --dry-run               # show what would be written
+```
+
+`--force` overwrites an existing `mureo` entry without prompting; a timestamped backup of the Claude Desktop config is always saved first.
+
+## Learn Commands
+
+```bash
+mureo learn add "<insight markdown>"          # append to the operator tier (default --scope operator)
+mureo learn add "<insight markdown>" --scope workspace
+mureo learn tiers                             # which knowledge tiers are configured (read-only)
+```
+
+`--scope workspace` exits non-zero with a hint when no workspace tier is configured.
+
 ## Configure UI & Always-On Service
 
 `mureo configure` normally runs the browser UI on demand and stops when idle. To keep it running across reboots — so the dashboard (including the read-only **Reports** tab) is always reachable — register it as a user-level auto-start service.
@@ -153,6 +198,9 @@ See [amazon-ads.md](amazon-ads.md) for the full walkthrough.
 # Open the configure UI (or surface the already-running one)
 mureo configure
 mureo open                 # bring an already-running configure UI to the front
+mureo open --url-only      # print the dashboard URL without opening a browser
+mureo configure --no-browser          # start the UI without opening a browser tab
+mureo configure --timeout-seconds 1200  # auto-stop cap (default 600; ignored under --serve)
 
 # Run headless as a long-lived daemon (no browser, no idle timeout).
 # This is what the service backend invokes; you rarely run it by hand.
@@ -212,8 +260,10 @@ Installs made before this release: upgrade pip once by hand first — `python -m
 ```bash
 mureo upgrade              # upgrade mureo itself
 mureo upgrade --all        # upgrade mureo + every installed `mureo-*` plugin
+mureo upgrade mureo-foo    # upgrade named package(s); a pinned spec (`mureo-foo==1.2.3`) also works
 mureo upgrade --dry-run    # print the pip commands without running them
 mureo upgrade --no-refresh # upgrade the package(s) only; skip the post-upgrade refresh
+mureo version              # show the installed version (also `mureo --version`)
 ```
 
 After a successful upgrade, mureo runs a **post-upgrade refresh** so the new code actually takes effect: it re-deploys the bundled skills into `~/.claude/skills/` and any plugin-provided native slash skills (the `mureo.native_skills` entry-point group, #439) into both `~/.claude/skills/` and `~/.codex/skills/`, upgrades the installed credential-guard hooks, and restarts the always-on service. The refresh only touches a host that already has a skills directory, so it never force-installs skills you removed on purpose. Pass `--no-refresh` to upgrade the package(s) alone.
@@ -313,7 +363,7 @@ Filters combine, and `--last` applies **after** filtering — `--failures --last
 
 ## Repair Commands
 
-`mureo repair` fixes the STATE.json problems mureo can fix **without guessing**. Today that is one: a `platforms` entry filed under a key that names no advertising platform at all — an agent writing LOGLY snapshots under `logly_ads` when the bridge's provider is `logly_ads_context`, for instance. Both keys then carry the same ad account, and the dashboard reports the spend, conversions and CPA as double-counted.
+`mureo repair` fixes the STATE.json problems mureo can fix **without guessing**. Today that is one: a `platforms` entry filed under a key that names no advertising platform at all — an agent writing snapshots under `acme_ads` when the bridge's provider is `acme_ads_context`, for instance. Both keys then carry the same ad account, and the dashboard reports the spend, conversions and CPA as double-counted.
 
 ### What is actually removed, and what is only reported
 
@@ -339,13 +389,13 @@ mureo repair platform-key --apply
 mureo repair platform-key --apply --yes
 
 # Narrow it to one key, or point at another workspace's STATE.json.
-mureo repair platform-key --key logly_ads
+mureo repair platform-key --key acme_ads
 mureo repair platform-key --state-file /path/to/STATE.json
 
 # Remove the half of a duplicate YOU decided is wrong, even though mureo
 # can resolve its key. Dry run first, as always.
-mureo repair platform-key --key plugin:mureo-logly-bridge --drop-duplicate
-mureo repair platform-key --key plugin:mureo-logly-bridge --drop-duplicate --apply
+mureo repair platform-key --key plugin:mureo-acme-bridge --drop-duplicate
+mureo repair platform-key --key plugin:mureo-acme-bridge --drop-duplicate --apply
 
 # Survey every client on this machine instead of one workspace.
 mureo repair platform-key --all
@@ -355,11 +405,11 @@ mureo repair platform-key --all --apply
 The dry run names the key, the ad account, how many campaigns the entry carries, whether it holds a `totals` rollup, which windows it covers with each window's fetch time, and any `not_collected` note — for the entry being removed **and** for every other entry holding the same ad account, whether or not mureo can resolve those — then states why it can go and exactly what would change:
 
 ```
-  logly_ads — mureo cannot resolve this key.
+  acme_ads — mureo cannot resolve this key.
     It is not one of mureo's own platform names, no plugin installed here
     registers it, and it is not a plugin:<distribution>:<provider> key.
 
-    Why it can go: the same ad account is stored under logly_ads_context, which
+    Why it can go: the same ad account is stored under acme_ads_context, which
     mureo CAN resolve — so this entry duplicates a record that survives, and
     holds nothing a sync cannot refill.
 
@@ -370,15 +420,15 @@ The dry run names the key, the ad account, how many campaigns the entry carries,
       periods:     LAST_30_DAYS (fetched 2026-08-01T03:00:00+00:00)
 
     The same ad account is also stored under:
-      logly_ads_context — mureo CAN resolve this key; it stays.
+      acme_ads_context — mureo CAN resolve this key; it stays.
         campaigns:   1
         totals:      stored, covering LAST_30_DAYS, fetched 2026-08-12T03:00:00+00:00
         periods:     none stored
 
-    Would change: the whole logly_ads entry is removed from STATE.json.
+    Would change: the whole acme_ads entry is removed from STATE.json.
     Would NOT change: no figures are added together, moved or edited, and every
     other platform entry is left exactly as it is.
-    Afterwards: the next sync refills logly_ads_context from the platform itself.
+    Afterwards: the next sync refills acme_ads_context from the platform itself.
 ```
 
 Nothing is ever merged or summed: two partial entries added together over-count exactly as much as dropping one under-counts. The unresolvable entry is **removed**, and the next sync refills the key the account is really stored under.
@@ -388,18 +438,18 @@ Nothing is ever merged or summed: two partial entries added together over-count 
 ```
     Would NOT change: no figures are added together, moved or edited. Every
     platform entry other than the 2 this run removes is left exactly as it is.
-    This run removes: logly_ads, logly_adz.
+    This run removes: acme_ads, acme_adz.
 ```
 
 **When every entry for one ad account is in the plan**, both blocks say so before the confirmation, rather than each describing its own removal in isolation:
 
 ```
     The same ad account is also stored under:
-      logly_adz — this run removes this entry too.
+      acme_adz — this run removes this entry too.
         ...
 
     Afterwards: this run removes every entry for ad account 1234567890
-    (logly_ads, logly_adz), so STATE.json will hold NO record of that account at all.
+    (acme_ads, acme_adz), so STATE.json will hold NO record of that account at all.
     The figures stay in the backup; re-sync the platform under its real
     key once you know what that is.
 ```
@@ -407,7 +457,7 @@ Nothing is ever merged or summed: two partial entries added together over-count 
 **An entry mureo will not remove** is shown in the same shape, with `Would change: nothing.` and what to do about it:
 
 ```
-  logly_ads — mureo cannot resolve this key, and will NOT remove it.
+  acme_ads — mureo cannot resolve this key, and will NOT remove it.
     It is not one of mureo's own platform names, no plugin installed here
     registers it, and it is not a plugin:<distribution>:<provider> key.
 
@@ -473,14 +523,14 @@ One ad account stored under two keys that **both** name real platforms is the ca
 
 ```
 One ad account (1234567890) is stored under platform keys that
-BOTH name real platforms (plugin:mureo-logly-bridge, logly_ads_context), so its spend,
+BOTH name real platforms (plugin:mureo-acme-bridge, acme_ads_context), so its spend,
 conversions and CPA are counted twice.
 What each entry holds:
-  plugin:mureo-logly-bridge
+  plugin:mureo-acme-bridge
     campaigns:   0
     totals:      stored, covering LAST_30_DAYS, fetched 2026-07-07
     periods:     YESTERDAY (fetched 2026-08-17T10:17:42+09:00)
-  logly_ads_context
+  acme_ads_context
     campaigns:   3
     totals:      none stored
     periods:     YESTERDAY (fetched 2026-08-13); LAST_30_DAYS (fetched 2026-08-13)
@@ -514,12 +564,12 @@ A bad key is rarely one directory's problem. It is written by an agent, and an a
 Surveyed 7 clients.
 
   Need repair (2 of 7):
-    acme (Acme Co) — logly_ads
-    beta (Beta Ltd) — logly_ads
+    acme (Acme Co) — acme_ads
+    beta (Beta Ltd) — acme_ads
 
   Need your decision (2 of 7):
     epsilon (Epsilon GmbH) [archived] — one ad account under two real platform keys (see below)
-    theta (Theta AB) — mureo cannot resolve logly_ads_v2, and will not remove it (see below)
+    theta (Theta AB) — mureo cannot resolve acme_ads_v2, and will not remove it (see below)
 
   Clean (2 of 7):
     gamma (Gamma KK)
@@ -563,7 +613,7 @@ GA4 and Search Console are **not** part of the BYOD bundle pipeline — they rem
 
 ### Read-only guarantee
 
-BYOD mode rejects every mutation tool. Methods whose name starts with `create_`, `update_`, `delete_`, `remove_`, `add_`, `send_`, `upload_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, or `patch_` return:
+BYOD mode rejects every mutation tool. Methods whose name starts with `create_`, `update_`, `delete_`, `remove_`, `add_`, `send_`, `upload_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `replace_`, `boost_`, `end_`, `duplicate_`, or `export_` return:
 
 ```json
 {
@@ -589,7 +639,8 @@ mureo auth check-google | jq .
   "client_id": "123456789.apps.googleusercontent.com",
   "client_secret": "***************wxyz",
   "refresh_token": "***************efgh",
-  "login_customer_id": "1234567890"
+  "login_customer_id": "1234567890",
+  "customer_id": "1234567890"
 }
 ```
 

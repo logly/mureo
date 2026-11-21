@@ -14,6 +14,8 @@ platforms. All outputs are structured JSON — designed for machine consumption.
 - Google Ads
 - Meta Ads
 - Google Search Console
+- ChatGPT Ads (bundled provider)
+- Amazon Ads (bundled bridge to Amazon's official MCP server)
 
 **Companion data sources (external MCP):**
 - GA4 (via Google's official MCP)
@@ -29,7 +31,7 @@ platforms. All outputs are structured JSON — designed for machine consumption.
 
 2. **Budget changes require extra caution.** A budget increase takes effect immediately
    and cannot be undone retroactively. Double-check amounts and currency units
-   (Google Ads uses micros; Meta Ads uses cents).
+   (Google Ads budget tools take `amount` in currency units, or `amount_micros`; Google Ads bids such as `cpc_bid_micros` are micros; Meta Ads uses the currency's minor unit: cents for USD, yen for JPY).
 
 3. **Pause before delete.** Prefer pausing campaigns/ads over deleting them.
    Deleted entities cannot be restored.
@@ -61,23 +63,26 @@ Add to your MCP client configuration:
 {
   "mcpServers": {
     "mureo": {
-      "command": "python",
+      "type": "stdio",
+      "command": "/absolute/path/to/python",
       "args": ["-m", "mureo.mcp"]
     }
   }
 }
 ```
 
-The MCP server exposes tools for Google Ads, Meta Ads, and Search Console.
+Set `command` to the absolute path of the Python interpreter mureo is installed in; a bare `python` may resolve to an interpreter without mureo.
 
-### Google Ads Tools (prefix: `google_ads.`)
+The MCP server exposes tools for Google Ads, Meta Ads, Search Console, and ChatGPT Ads, and (when the bridge is configured) Amazon Ads.
+
+### Google Ads Tools (prefix: `google_ads_`)
 
 Tools covering campaigns, ad groups, ads, keywords, budget, accounts, search terms,
 extensions, conversions, targeting, analysis, B2B, creative, monitoring, capture, and assets.
 
 See `skills/_mureo-google-ads/SKILL.md` for the full tool reference.
 
-### Meta Ads Tools (prefix: `meta_ads.`)
+### Meta Ads Tools (prefix: `meta_ads_`)
 
 Tools covering campaigns, ad sets, ads, insights, analysis, audiences, pixels,
 conversions API, creatives, images, catalogs, lead ads, videos, split tests, ad rules,
@@ -94,7 +99,17 @@ hyphenated namespaces (`campaign_management-*`, `account_management-*`,
 See `skills/_mureo-amazon-ads/SKILL.md` for the tool surface and calling
 requirements, and `docs/amazon-ads.md` for the setup.
 
-### Search Console Tools (prefix: `search_console.`)
+### ChatGPT Ads Tools (prefix: `chatgpt_ads_`)
+
+Bundled provider over OpenAI's Advertiser API, authenticated with one Ads API key per ad
+account. Tools covering the account and its spend limits, campaigns, ad groups, ads,
+insights, change history, image upload, ad preview, location search, custom audiences,
+pixels, conversion events, and conversion reports.
+
+See `skills/_mureo-chatgpt-ads/SKILL.md` for the tool surface and `docs/chatgpt-ads.md`
+for the setup.
+
+### Search Console Tools (prefix: `search_console_`)
 
 Tools covering site management, search analytics, URL inspection, sitemaps, and indexing.
 
@@ -247,7 +262,7 @@ A JSON file tracking campaign state snapshots across platforms:
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/_mureo-learning/SKILL.md` for the decision framework. The `skills/_mureo-pro-diagnosis/SKILL.md` file contains learned diagnostic insights that grow with use — the agent saves marketing knowledge here when users provide corrections or new insights during operations.
 
-`reversible_params` is an optional, agent-authored hint describing how to reverse the action. Its `operation` must be in the rollback planner's allow-list (`mureo/rollback/planner.py`); destructive verbs (`.delete`, `.remove`, etc.) and unexpected parameter keys are refused. `rollback_of` is set by the rollback executor and points at the index of the entry that was reversed — a later entry with this field constitutes an append-only audit trail and causes a second apply against the same index to be refused. See `docs/mcp-server.md` for the `rollback_plan_get` / `rollback_apply` MCP tools.
+`reversible_params` is an optional, agent-authored hint describing how to reverse the action. Its `operation` must be in the rollback planner's allow-list (`mureo/rollback/planner.py`); destructive verbs (`_delete`, `_remove`, etc.) and unexpected parameter keys are refused. `rollback_of` is set by the rollback executor and points at the index of the entry that was reversed — a later entry with this field constitutes an append-only audit trail and causes a second apply against the same index to be refused. See `docs/mcp-server.md` for the `rollback_plan_get` / `rollback_apply` MCP tools.
 
 Use `mureo.context.state` to parse and write STATE.json programmatically.
 

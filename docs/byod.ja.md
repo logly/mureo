@@ -156,7 +156,7 @@ Next: ask Claude Code: 'Run /daily-check'
 ### Step 4 — Claude Code に診断を依頼
 
 `STRATEGY.md` がある任意のディレクトリで Claude Code を開き
-（なければ `mureo onboard` で生成）、こう打つだけです:
+（なければ Claude Code で `/onboard` を実行して生成）、こう打つだけです:
 
 > Run /daily-check
 
@@ -245,7 +245,7 @@ mureo BYOD は **設計レベルで read-only** です。エージェントは�
 `create_`, `update_`, `delete_`, `remove_`, `add_`, `send_`, `upload_`,
 `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`,
 `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`,
-`set_`, `patch_`, `boost_`, `end_`, `duplicate_`, `export_`
+`set_`, `patch_`, `replace_`, `boost_`, `end_`, `duplicate_`, `export_`
 
 末尾の 4 つ（`boost_` / `end_` / `duplicate_` / `export_`）は、上記の
 汎用動詞に一致しない Meta 固有のミューテーション（`boost_post` /
@@ -305,8 +305,8 @@ manifest の不在を検知し、自動的に credentials.json ベースに切�
 | Google Ads Script | `search_terms` | `search_terms.csv` |
 | Meta Ads エクスポート | ヘッダに日付列 + `Campaign name` + `Impressions` を含むシート | `meta_ads/{campaigns,ad_sets,ads,metrics_daily}.csv` |
 
-Google Ads アダプタは上記タブのうち最低 1 つが含まれていれば dispatch
-されます。Meta アダプタは Meta 広告マネージャ式のヘッダを検出した
+Google Ads アダプタは `campaigns` タブがあれば dispatch されます
+（ほかのタブは任意）。Meta アダプタは Meta 広告マネージャ式のヘッダを検出した
 ときだけ dispatch されます。両者は混ざらないように作られていて
 （Google Ads Script は短形の `campaign`、Meta は長形の `Campaign name`
 を使う）、1 つの workbook に両方のデータが入ることはありません。
@@ -363,7 +363,7 @@ Sheet bundle の `search_terms` タブは、既存の Google Ads MCP ツール�
 
 ### `Error: <file>: no recognized tabs found`
 
-bundle importer は前述のタブのうち少なくとも 1 つを期待します。
+bundle importer は Google Ads Script の `campaigns` タブ（または Meta 広告マネージャのエクスポート）を期待します。
 Google Ads Script が実際にデータを書き出せているか、スプレッドシートを
 開いてタブを確認してみてください。
 
@@ -377,7 +377,7 @@ Google Ads Script が実際にデータを書き出せているか、スプレ�
 `mureo byod status` を見て、MCP サーバーログに「manifest references X
 but X is missing on disk」という警告が出ていないか確認してください。
 プラットフォームのディレクトリだけ手動で削除してしまった場合は、
-`mureo byod import --replace` で再取り込みするか
+`mureo byod import <file.xlsx> --replace` で再取り込みするか
 `mureo byod remove --<platform>` で manifest を整合させてください。
 
 ---

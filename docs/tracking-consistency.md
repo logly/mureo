@@ -107,7 +107,7 @@ The core check only ever sees `AdTrackingRecord` (ad id, campaign id, destinatio
 | --- | --- | --- | --- |
 | Google Ads (native) | `final_urls` on the `google_ads_ads_list` row | yes | `records_from_google_ads_ads` |
 | Meta Ads (native) | creative `object_story_spec` (`link_data.link`, or a call-to-action link on `video_data` / `photo_data` / `template_data`) plus creative-level `url_tags`, which Meta appends at delivery time | yes | `records_from_meta_ads_ads`. `url_tags` is read because `meta_ads_ads_list` now requests it |
-| Plugin platforms via the provider ABI (Yahoo, LINE, SmartNews, LOGLY, …) | `Ad.final_url` | yes, one URL per ad — all the ABI models | `records_from_provider_ads`; pass the canonical `plugin:<distribution>:<provider>` key |
+| Plugin platforms via the provider ABI | `Ad.final_url` | yes, one URL per ad — all the ABI models | `records_from_provider_ads`; pass the canonical `plugin:<distribution>:<provider>` key |
 | Amazon Ads (bridged official MCP) | not exposed by the bridged tool surface mureo carries today | **no** | ads come back with no URL and are listed in `ads_without_readable_url` |
 | Hosted connectors (e.g. TikTok's own MCP) | whatever that connector's own list tool returns | best-effort | `records_from_mappings` with an explicit field map |
 
