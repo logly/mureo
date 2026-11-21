@@ -95,10 +95,41 @@ class TestEntityReads:
         await _call("chatgpt_ads_ad_groups_list", {"campaign_id": "cmpn_1"})
         assert ("campaign_id", "cmpn_1") in api.params()
 
-    async def test_ad_groups_list_requires_campaign_id(self, api: FakeAPI) -> None:
+    async def test_ad_groups_list_without_campaign_id_lists_the_account(
+        self, api: FakeAPI
+    ) -> None:
+        api.add("/ad_groups", body=page(rows("adgrp", 0, 2), has_more=False))
+        out = await _call("chatgpt_ads_ad_groups_list")
+        assert [r["id"] for r in out] == ["adgrp_0", "adgrp_1"]
+        assert api.requests[0].url.path.endswith("/ad_groups")
+        assert "campaign_id" not in dict(api.params())
+
+    @pytest.mark.parametrize("campaign_id", ["a/b", ""])
+    async def test_ad_groups_list_refuses_a_malformed_campaign_id(
+        self, api: FakeAPI, campaign_id: str
+    ) -> None:
         with pytest.raises(ValueError, match="campaign_id"):
-            await ChatGPTAdsProvider().handle_mcp_tool("chatgpt_ads_ad_groups_list", {})
+            await ChatGPTAdsProvider().handle_mcp_tool(
+                "chatgpt_ads_ad_groups_list", {"campaign_id": campaign_id}
+            )
         assert api.requests == []
+
+    async def test_ad_groups_list_sends_campaign_and_name_together(
+        self, api: FakeAPI
+    ) -> None:
+        api.add("/ad_groups", body=page(rows("adgrp", 0, 1), has_more=False))
+        await _call(
+            "chatgpt_ads_ad_groups_list", {"campaign_id": "cmpn_1", "name": "Spring"}
+        )
+        params = dict(api.params())
+        assert (params["campaign_id"], params["name"]) == ("cmpn_1", "Spring")
+
+    def test_ad_groups_list_schema_does_not_require_campaign_id(self) -> None:
+        (tool,) = [
+            t for t in handlers.ALL_TOOLS if t.name == "chatgpt_ads_ad_groups_list"
+        ]
+        assert "campaign_id" in tool.inputSchema["properties"]
+        assert "campaign_id" not in tool.inputSchema["required"]
 
     async def test_ad_groups_get_and_ads_get(self, api: FakeAPI) -> None:
         api.add("/ad_groups/adgrp_1", body={"id": "adgrp_1"})

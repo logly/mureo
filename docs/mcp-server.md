@@ -959,7 +959,7 @@ Read and change ChatGPT Ads accounts through OpenAI's Advertiser API. The tools 
 | `chatgpt_ads_account_get` | Get the ad account the API key belongs to (id, name, status, time zone, currency) | *(none)* |
 | `chatgpt_ads_campaigns_list` | List campaigns, optionally with serving issues | *(none)* |
 | `chatgpt_ads_campaigns_get` | Get one campaign (budget, bidding, targeting, schedule) | `campaign_id` |
-| `chatgpt_ads_ad_groups_list` | List the ad groups of one campaign | `campaign_id` |
+| `chatgpt_ads_ad_groups_list` | List ad groups, optionally of one campaign | *(none)* |
 | `chatgpt_ads_ad_groups_get` | Get one ad group (bid settings, serving issues) | `ad_group_id` |
 | `chatgpt_ads_ads_list` | List ads, optionally within one ad group | *(none)* |
 | `chatgpt_ads_ads_get` | Get one ad (review status, creative, serving issues) | `ad_id` |
