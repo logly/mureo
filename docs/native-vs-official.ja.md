@@ -230,7 +230,7 @@ Claude  →  ローカルの mureo MCP  →  https://api.ads.openai.com/v1
   キーで読み取れる広告アカウントは 1 つです。
 - **標準ツール群ではなく、プロバイダ経路。** ツールはプラグインと同じ経路で
   提供され、ツールごとに監査とスロットルがかかり、変更には各ツールが宣言した金額に
-  STRATEGY.md の上限が適用されます（どの上限がどの金額を読むかは chatgpt-ads.md
+  STRATEGY.md の上限が適用されます（どの上限がどの金額を読むかは chatgpt-ads.ja.md
   を参照）。ツール名は mureo のもの
   （`chatgpt_ads_*`）で、一覧は固定のため、文書に記載するツール総数に含まれます。
 - **変更は記録され、取り消せる。** 10 個の読み取りツールが、広告アカウント、
@@ -250,7 +250,7 @@ Claude  →  ローカルの mureo MCP  →  https://api.ads.openai.com/v1
 - **mureo の詳細分析（異常検知の基準値、RSA監査、CV定義の不一致検出）と BYOD
   には未対応。**
 
-セットアップ、単位、上限、失敗時の返り値は [chatgpt-ads.md](./chatgpt-ads.md)
+セットアップ、単位、上限、失敗時の返り値は [chatgpt-ads.ja.md](./chatgpt-ads.ja.md)
 を参照してください。
 
 ---

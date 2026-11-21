@@ -199,7 +199,7 @@ mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャン
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) の App ID + App Secret(開発モードで OK) |
 | **Amazon Ads** | Login with Amazon (LwA) アプリの Client ID + (推奨) Refresh Token + Client Secret。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md) |
 | **GA4 / Search Console** | OAuth ログインのみ(developer token 不要、ウィザードが処理) |
-| **ChatGPT Ads** | Ads Manager の設定ページで作る Ads API キー(1 キーで 1 アカウント)。`mureo configure` の **ChatGPT Ads** タブに貼るか `CHATGPT_ADS_API_KEY` に設定。詳細は [`docs/chatgpt-ads.md`](chatgpt-ads.md)(英語) |
+| **ChatGPT Ads** | Ads Manager の設定ページで作る Ads API キー(1 キーで 1 アカウント)。`mureo configure` の **ChatGPT Ads** タブに貼るか `CHATGPT_ADS_API_KEY` に設定。詳細は [`docs/chatgpt-ads.ja.md`](chatgpt-ads.ja.md) |
 
 > **Google Ads API のアクセスレベル**: Cloud Console で API を有効化すると **Test** access(テストアカウントのみ)が即時に付与されます。**本番アカウントには最低でも Explorer** が必要で、これは Google Ads API の **Overview** ページから申請し、ブランド確認は不要です(本番の操作上限は 1 日 2,880)。**Basic**(1 日 15,000)は、申請の前提として Cloud プロジェクトのブランド確認が必要です。待ちの間は BYOD で運用してください。詳細は [docs/authentication.ja.md — アクセスレベル](authentication.ja.md#アクセスレベル)。
 
