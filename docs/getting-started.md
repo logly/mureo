@@ -199,7 +199,7 @@ Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually exec
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) App ID + App Secret (development mode is fine) |
 | **Amazon Ads** | A Login with Amazon (LwA) app: Client ID + (recommended) Refresh Token + Client Secret. See [`docs/amazon-ads.md`](amazon-ads.md) |
 | **GA4 / Search Console** | OAuth login (no developer token); the wizard handles this |
-| **ChatGPT Ads** | An Ads API key from the Settings page in Ads Manager (one key per ad account); paste it in the **ChatGPT Ads** tab of `mureo configure` or set `CHATGPT_ADS_API_KEY`. See [`docs/chatgpt-ads.md`](chatgpt-ads.md) |
+| **ChatGPT Ads** | An Ads API key from the Settings page in Ads Manager (one key per ad account); enter it in the `mureo configure` step wizard or its **ChatGPT Ads** tab, or set `CHATGPT_ADS_API_KEY`. See [`docs/chatgpt-ads.md`](chatgpt-ads.md) |
 
 > **Google Ads API access level**: enabling the API in the Cloud Console grants **Test** access (test accounts only) right away. **Production accounts need at least Explorer** — applied for from the Google Ads API **Overview** page, with no brand verification required (2,880 production operations a day). **Basic** (15,000 a day) has brand verification of the Cloud project as a prerequisite before you can apply. Use BYOD while you wait. See [docs/authentication.md — Access levels](authentication.md#access-levels).
 

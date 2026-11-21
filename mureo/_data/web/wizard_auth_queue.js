@@ -1,9 +1,9 @@
 // wizard_auth_queue.js — which slots the configure wizard's auth step
 // shows, and in what order: the Google OAuth slot shared by Google Ads and
-// Search Console, Meta, GA4, Amazon Ads, and a plugin provider chosen for a
-// built-in platform. Also the "already stored" checks the step uses to
-// explain a skipped slot. DOM-free queue construction, separate from the
-// DOM-driven step rendering in auth_wizards.js. Loaded BEFORE it and
+// Search Console, Meta, GA4, Amazon Ads, ChatGPT Ads, and a plugin provider
+// chosen for a built-in platform. Also the "already stored" checks the step
+// uses to explain a skipped slot. DOM-free queue construction, separate from
+// the DOM-driven step rendering in auth_wizards.js. Loaded BEFORE it and
 // consumed through window.MUREO_AUTH_QUEUE; the plugin-choice rule is read
 // off window.MUREO_WIZARD_CHOICE at call time.
 
@@ -109,14 +109,8 @@
       queue.push({
         key: "ga4",
         inputs: [
-          {
-            name: "GOOGLE_APPLICATION_CREDENTIALS",
-            labelKey: "wizard.auth.ga4_sa_path",
-          },
-          {
-            name: "GOOGLE_PROJECT_ID",
-            labelKey: "wizard.auth.ga4_project_id",
-          },
+          { name: "GOOGLE_APPLICATION_CREDENTIALS", labelKey: "wizard.auth.ga4_sa_path" },
+          { name: "GOOGLE_PROJECT_ID", labelKey: "wizard.auth.ga4_project_id" },
         ],
       });
     }
@@ -129,6 +123,11 @@
       // ``account_credential_fields``. Nothing about the fields is copied
       // into this file, so the wizard cannot drift from the loader.
       queue.push({ key: "amazon_ads", pluginProvider: "amazon_ads" });
+    }
+    if (state.platforms.chatgpt_ads) {
+      // One API key, declared by the provider itself: the slot renders the
+      // provider's own field list, exactly like the Amazon slot above.
+      queue.push({ key: "chatgpt_ads", pluginProvider: "chatgpt_ads" });
     }
     return queue;
   }
