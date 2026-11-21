@@ -10,7 +10,7 @@ nothing else:
   mureo just closed.
 - **Whether it may write** — the closure appends an ``action_log`` entry, so
   it asks the SAME policy gates a ``mureo_state_action_log_append`` call
-  would face. A read-only deployment (mureo-agency's gate) therefore skips
+  would face. A read-only deployment (a third-party read-only gate) therefore skips
   the write with the gate's own sentence, instead of a read tool quietly
   doing what the host forbids a write tool to do.
 - **What a failure costs** — nothing. Any exception is caught, logged with

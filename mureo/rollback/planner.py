@@ -167,8 +167,8 @@ def set_plugin_reversal_keys(keys: Mapping[str, frozenset[str] | None]) -> None:
 def _plugin_reversal_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
     """Plugin escape hatch for :func:`plan_rollback` (guardrail parity).
 
-    A plugin tool may declare ``meta["mureo"]["reversal"]`` pointing at one of
-    its own operations. Such an operation can never appear in the static
+    A plugin tool may declare ``meta["mureo"]["reversal"]`` naming a plugin
+    operation, normally one of its own. Such an operation can never appear in the static
     :data:`_ALLOWED_OPERATIONS` (mureo cannot enumerate third-party tools at
     author time), so before #114-follow-up it was always recorded-but-not-
     executable. This hook lets the planner accept it when it names a

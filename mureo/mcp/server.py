@@ -674,7 +674,7 @@ def _evaluate_policy_gates(
     the scenario — the scenario is a bridge whose gate goes live while its
     tools and its analytics module stay unregistered, so its own budget gate
     guards tool names that cannot be dispatched. A distribution shipping a
-    *global* gate is worse rather than better: mureo-agency's read-only gate
+    *global* gate is worse rather than better: a third-party read-only gate
     would start refusing mutations while the runtime-context factory deciding
     *whose* account is being refused — which it registers in the same
     ``pyproject.toml`` — is still the OSS default, because that one is

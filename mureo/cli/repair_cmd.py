@@ -68,9 +68,9 @@ not offered there.
 
 The card's ``unrecognized_key`` signal does now agree with #609's answer:
 since #631 the label path resolves a bare provider name from the same
-installed-plugin enumeration the guard reads, so ``logly_ads_context`` — the
+installed-plugin enumeration the guard reads, so ``acme_ads_context`` — the
 CORRECT key in the reported incident — no longer fires it while the invented
-``logly_ads`` still does.
+``acme_ads`` still does.
 
 Agreeing about the key is not deciding the repair, though, and the second
 half is what keeps the button off that card. "Unresolvable" is the FILTER,

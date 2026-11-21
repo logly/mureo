@@ -223,8 +223,8 @@ def plugin_platform_parts(key: str) -> tuple[str, str]:
 
     ``"plugin:mureo-lineyahoo-bridge:yahoo_ads"`` →
     ``("mureo-lineyahoo-bridge", "yahoo_ads")``. The legacy short form
-    yields an empty provider: ``"plugin:mureo-logly-bridge"`` →
-    ``("mureo-logly-bridge", "")``. Any key that is not a plugin platform
+    yields an empty provider: ``"plugin:mureo-acme-bridge"`` →
+    ``("mureo-acme-bridge", "")``. Any key that is not a plugin platform
     key yields ``("", "")``.
 
     The split is on the FIRST separator after the prefix, so a provider
@@ -241,9 +241,9 @@ def plugin_platform_parts(key: str) -> tuple[str, str]:
 def plugin_distribution(key: str) -> str:
     """Return the distribution embedded in a plugin platform ``key``.
 
-    ``"plugin:mureo-logly-bridge"`` and
-    ``"plugin:mureo-logly-bridge:logly_ads_context"`` both yield
-    ``"mureo-logly-bridge"``. Any key that is not a plugin platform key
+    ``"plugin:mureo-acme-bridge"`` and
+    ``"plugin:mureo-acme-bridge:acme_ads_context"`` both yield
+    ``"mureo-acme-bridge"``. Any key that is not a plugin platform key
     (a built-in, a hosted connector, a bare ``"plugin:"``) yields ``""``
     — the caller decides what to do with a key that carries no
     distribution.

@@ -63,7 +63,7 @@
   }
 
   // Report flags (reports.daily.flags) are free-form snake_case tags the
-  // analysis skill authors (e.g. "cpa_over_target_logly"). Map the common
+  // analysis skill authors (e.g. "cpa_over_target_acme"). Map the common
   // bases to friendly localized labels; anything unknown is humanized
   // generically so a raw snake_case token never reaches the operator. The
   // LONGEST matching base wins. Only the base label is shown — the trailing

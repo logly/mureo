@@ -1,7 +1,7 @@
 """Which STATE.json files ``mureo repair platform-key --all`` sweeps.
 
-The incident #610 exists for — LOGLY snapshots written under the invented key
-``logly_ads`` instead of the bridge's ``logly_ads_context`` — was never
+The incident #610 exists for — a plugin platform's snapshots written under the
+invented key ``acme_ads`` instead of the bridge's ``acme_ads_context`` — was never
 confined to one directory. It was made by an agent that ran against every
 client on the machine, so the repair has to be able to run against every
 client on the machine.

@@ -94,13 +94,13 @@ def platform_display_name(key: str) -> str:
     - A legacy ``plugin:<dist>`` key → a humanized label from ``<dist>``:
       drop a leading ``mureo-`` and a trailing ``-bridge``, title-case the
       hyphen-separated words, and suffix ``" (plugin)"`` (e.g.
-      ``plugin:mureo-logly-bridge`` → ``"Logly (plugin)"``,
-      ``plugin:acme-ads`` → ``"Acme Ads (plugin)"``). Unchanged, so state
+      ``plugin:mureo-acme-bridge`` → ``"Acme (plugin)"``,
+      ``plugin:example-ads`` → ``"Example Ads (plugin)"``). Unchanged, so state
       written before #537 keeps the label it already had.
     - A bare provider name an INSTALLED plugin registered (#609/#631) → the
       declared ``display_name`` when its class is registered, else the
       humanized name, with the same ``" (plugin)"`` suffix
-      (``logly_ads_context`` → ``"Logly Ads Context (plugin)"``). See
+      (``acme_ads_context`` → ``"Acme Ads Context (plugin)"``). See
       :func:`_installed_plugin_platform_label`.
     - Anything else (an unknown built-in-shaped key) → the key itself, so
       the dashboard never renders a blank label.
@@ -133,8 +133,8 @@ def _installed_plugin_platform_label(key: str) -> str:
     """Label a bare provider name an installed plugin registered (#631).
 
     ``key`` is a platform name straight out of the ``mureo.providers`` /
-    ``mureo.analytics`` entry points — ``logly_ads_context``, not
-    ``plugin:mureo-logly-bridge:logly_ads_context``. That has been a valid
+    ``mureo.analytics`` entry points — ``acme_ads_context``, not
+    ``plugin:mureo-acme-bridge:acme_ads_context``. That has been a valid
     key to WRITE since #609, and this function is why the read side no longer
     calls it unresolvable: a key the guard accepted was being flagged
     ``unrecognized_key`` on the dashboard at the same moment
@@ -212,7 +212,7 @@ def _humanize_words(name: str) -> str:
 def _humanize_dist(dist: str) -> str:
     """Turn a distribution name into a Title-Cased label.
 
-    ``mureo-logly-bridge`` → ``Logly``; ``acme-ads`` → ``Acme Ads``. A
+    ``mureo-acme-bridge`` → ``Acme``; ``example-ads`` → ``Example Ads``. A
     leading ``mureo-`` and a trailing ``-bridge`` are mureo packaging
     conventions, not part of the brand, so they are stripped. An empty
     result (e.g. ``plugin:mureo-``, which is nothing but conventions)
