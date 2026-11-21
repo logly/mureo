@@ -6,7 +6,8 @@ an unknown bid strategy, a multiplier the tool would refuse, a name the tool
 would refuse. Pinned here: each such prior records no reversal (or, for a
 campaign update, leaves that field out with a caveat), every reversal that is
 recorded passes the tool's schema and handler and sends the prior state, the
-response-only ``automated_bid`` maps to the request's automatic bidding, and
+response-only ``automated_bid`` maps to the request's automatic bidding, a
+fixed bid read back as ``target_cpc`` maps to the request's ``fixed_bid``, and
 the multiplier count is bounded so one entry cannot grow STATE.json without
 limit.
 """
@@ -209,6 +210,25 @@ class TestBid:
             _BID,
             arguments,
             restores={"bidding_config": {"billing_event_type": "click"}},
+        )
+        assert found is not None
+
+    async def test_a_target_cpc_is_restored_as_a_fixed_bid(self, api: FakeAPI) -> None:
+        api.add(
+            "/ad_groups/g_1",
+            body=_bid_prior(target_strategy="target_cpc", target_micros=2_000_000),
+        )
+        arguments = {
+            "ad_group_id": "g_1",
+            "bidding_config": {"billing_event_type": "click"},
+        }
+        restored = {
+            "billing_event_type": "click",
+            "strategy": "fixed_bid",
+            "max_bid_micros": 2_000_000,
+        }
+        found = await capture_checked(
+            _BID, arguments, restores={"bidding_config": restored}
         )
         assert found is not None
 

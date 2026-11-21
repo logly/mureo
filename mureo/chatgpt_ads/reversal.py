@@ -57,7 +57,11 @@ from mureo.chatgpt_ads.handlers_mutations import (
     required_name,
     schedule_value,
 )
-from mureo.chatgpt_ads.tools_mutations import BUDGET_KEYS, SCHEDULE_KEYS
+from mureo.chatgpt_ads.tools_mutations import (
+    BIDDING_CONFIG_KEYS,
+    BUDGET_KEYS,
+    SCHEDULE_KEYS,
+)
 from mureo.core.control_flow import STOP_EXCEPTIONS
 
 logger = logging.getLogger(__name__)
@@ -73,6 +77,15 @@ LIFETIME_BELOW_SPEND_CAVEAT = (
 MAX_REVERSAL_MULTIPLIERS = 1000
 
 _AUTOMATED_BID = "automated_bid"
+
+#: The billing event each ``target_strategy`` a response names for a fixed
+#: bid belongs to. A target strategy missing from this map gets no reversal:
+#: its request shape is not known, and guessing could set a different bid.
+_FIXED_BID_BILLING_EVENTS = {"target_cpc": "click"}
+
+#: Every key a response ``bidding_config`` is known to carry: the request's
+#: keys plus the fixed bid's read-back shape.
+_RESPONSE_BIDDING_KEYS = BIDDING_CONFIG_KEYS | {"target_strategy", "target_micros"}
 
 #: ``(mutation name, its arguments, the prior read)`` → reversal or ``None``.
 Builder = Callable[[str, dict[str, Any], Any], Any]
@@ -173,22 +186,58 @@ def _ad_group_rename(name: str, arguments: dict[str, Any], prior: Any) -> Any:
     return {"operation": name, "params": params}
 
 
+def _fixed_bid(present: dict[str, Any]) -> dict[str, Any] | None:
+    """The request's ``fixed_bid`` for a response's ``target_strategy``.
+
+    ``None`` unless the target strategy is one mureo knows, paired with its
+    billing event, carries ``target_micros``, and the config does not also
+    carry the request's own ``strategy`` / ``max_bid_micros``: a config with
+    both shapes does not say which bid is in force.
+    """
+    target = present.get("target_strategy")
+    if (
+        not isinstance(target, str)
+        or target not in _FIXED_BID_BILLING_EVENTS
+        or _FIXED_BID_BILLING_EVENTS[target] != present.get("billing_event_type")
+        or "target_micros" not in present
+        or "strategy" in present
+        or "max_bid_micros" in present
+    ):
+        return None
+    return {"strategy": "fixed_bid", "max_bid_micros": present["target_micros"]}
+
+
 def _request_bidding(config: object) -> dict[str, Any] | None:
     """A response ``bidding_config`` in the request shape, or ``None``.
 
-    ``automated_bid`` is how a response names automatic bidding, which a
-    request expresses by leaving out ``strategy`` and ``max_bid_micros``.
-    Any other value that is present but fails the tool's check means no
-    reversal rather than a config without it.
+    A response names a bid in one of two shapes. ``strategy`` and
+    ``max_bid_micros`` read back as sent, except that ``automated_bid`` is
+    how a response names automatic bidding, which a request expresses by
+    leaving out ``strategy`` and ``max_bid_micros``. A fixed bid reads back
+    as ``target_strategy`` / ``target_micros`` and is restored as
+    ``fixed_bid`` with that amount (see :func:`_fixed_bid`).
+
+    The platform replaces the whole object, so dropping a key would restore
+    a different config: a key outside :data:`_RESPONSE_BIDDING_KEYS`, or any
+    other value that is present but fails the tool's check, means no
+    reversal. A key whose value is null is absent.
     """
     if not isinstance(config, dict):
         return None
-    restored: dict[str, Any] = {"billing_event_type": config.get("billing_event_type")}
-    automated = config.get("strategy") == _AUTOMATED_BID
-    for key in ("strategy", "max_bid_micros"):
-        if config.get(key) is not None and not automated:
-            restored[key] = config[key]
-    multipliers = config.get("custom_audience_bid_multipliers")
+    present = {key: value for key, value in config.items() if value is not None}
+    if not set(present) <= _RESPONSE_BIDDING_KEYS:
+        return None
+    restored: dict[str, Any] = {"billing_event_type": present.get("billing_event_type")}
+    if "target_strategy" in present or "target_micros" in present:
+        bid = _fixed_bid(present)
+        if bid is None:
+            return None
+        restored.update(bid)
+    elif present.get("strategy") != _AUTOMATED_BID:
+        for key in ("strategy", "max_bid_micros"):
+            if key in present:
+                restored[key] = present[key]
+    multipliers = present.get("custom_audience_bid_multipliers")
     if multipliers is not None:
         if (
             isinstance(multipliers, list)

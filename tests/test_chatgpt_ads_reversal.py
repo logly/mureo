@@ -22,6 +22,7 @@ from mureo.amazon_ads.reversal import CAPTURE_DEADLINE_SECONDS
 from mureo.chatgpt_ads import handlers, reversal
 from mureo.chatgpt_ads._api import REVERSAL_READ_DEADLINE_SECONDS
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
+from mureo.chatgpt_ads.tools_mutations import MAX_BID_MICROS
 from mureo.context.models import StateDocument
 from mureo.context.state import read_state_file, write_state_file
 from mureo.mcp import plugin_audit
@@ -41,6 +42,20 @@ pytestmark = pytest.mark.unit
 _LIFETIME_CAVEAT = (
     "the platform rejects a lifetime budget below the amount already spent"
 )
+
+# How the platform answers a fixed bid of 50.00 on click billing, and the
+# request that sets it again.
+_FIXED_BID_PRIOR = {
+    "billing_event_type": "click",
+    "target_strategy": "target_cpc",
+    "target_micros": 50_000_000,
+}
+_FIXED_BID_RESTORED = {
+    "billing_event_type": "click",
+    "strategy": "fixed_bid",
+    "max_bid_micros": 50_000_000,
+}
+_ONE_AUDIENCE = [{"custom_audience_id": "aud_1", "bid_multiplier_micros": 1_500_000}]
 
 
 @pytest.fixture()
@@ -365,15 +380,28 @@ class TestAdGroupUpdates:
                 {"billing_event_type": "click", "max_bid_micros": 3_000_000},
             ),
             (
-                # A null value is absent; a key the request does not know is
-                # a response-only field and is not restored.
+                # A null value is absent, whether the key is known or not.
                 {
                     "billing_event_type": "click",
                     "strategy": "maximize_clicks",
                     "max_bid_micros": None,
-                    "brand_new": 1,
+                    "target_strategy": None,
+                    "target_micros": None,
+                    "brand_new": None,
                 },
                 {"billing_event_type": "click", "strategy": "maximize_clicks"},
+            ),
+            (
+                # A fixed bid reads back as target_strategy / target_micros.
+                _FIXED_BID_PRIOR,
+                _FIXED_BID_RESTORED,
+            ),
+            (
+                {**_FIXED_BID_PRIOR, "custom_audience_bid_multipliers": _ONE_AUDIENCE},
+                {
+                    **_FIXED_BID_RESTORED,
+                    "custom_audience_bid_multipliers": _ONE_AUDIENCE,
+                },
             ),
         ],
     )
@@ -406,6 +434,84 @@ class TestAdGroupUpdates:
         self, api: FakeAPI, prior: dict[str, Any]
     ) -> None:
         api.add("/ad_groups/g_1", body=prior)
+        found = await _capture(
+            "chatgpt_ads_ad_groups_update_bid",
+            {"ad_group_id": "g_1", "bidding_config": {"billing_event_type": "click"}},
+        )
+        assert found is None
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            pytest.param(
+                {**_FIXED_BID_PRIOR, "target_strategy": "target_other"},
+                id="unknown-target-strategy",
+            ),
+            pytest.param(
+                {**_FIXED_BID_PRIOR, "billing_event_type": "impression"},
+                id="target-cpc-with-impression-billing",
+            ),
+            pytest.param(
+                {**_FIXED_BID_PRIOR, "strategy": "fixed_bid"}, id="with-strategy"
+            ),
+            pytest.param(
+                {**_FIXED_BID_PRIOR, "strategy": "automated_bid"},
+                id="with-automated-bid",
+            ),
+            pytest.param(
+                {**_FIXED_BID_PRIOR, "target_strategy": ["target_cpc"]},
+                id="target-strategy-not-a-string",
+            ),
+            pytest.param(
+                {"target_strategy": "target_cpc", "target_micros": 50_000_000},
+                id="target-cpc-without-billing-event",
+            ),
+            pytest.param(
+                {**_FIXED_BID_PRIOR, "max_bid_micros": 50_000_000},
+                id="with-max-bid-micros",
+            ),
+            pytest.param(
+                {"billing_event_type": "click", "target_strategy": "target_cpc"},
+                id="target-micros-missing",
+            ),
+            *(
+                pytest.param({**_FIXED_BID_PRIOR, "target_micros": micros}, id=label)
+                for label, micros in (
+                    ("target-micros-bool", True),
+                    ("target-micros-float", 1.5),
+                    ("target-micros-string", "50000000"),
+                    ("target-micros-zero", 0),
+                    ("target-micros-above-max", MAX_BID_MICROS + 1),
+                )
+            ),
+            pytest.param(
+                {"billing_event_type": "click", "target_micros": 50_000_000},
+                id="target-micros-without-target-strategy",
+            ),
+            pytest.param(
+                {
+                    "billing_event_type": "click",
+                    "strategy": "maximize_clicks",
+                    "pacing": "even",
+                },
+                id="unknown-key",
+            ),
+            pytest.param(
+                {
+                    "billing_event_type": "click",
+                    "strategy": "maximize_clicks",
+                    "pacing": 0,
+                },
+                id="unknown-key-with-a-falsy-value",
+            ),
+        ],
+    )
+    async def test_a_config_mureo_cannot_read_whole_records_nothing(
+        self, api: FakeAPI, config: dict[str, Any]
+    ) -> None:
+        # The platform replaces the whole object, so restoring a config with
+        # a key dropped or misread would set a different bid.
+        api.add("/ad_groups/g_1", body={"id": "g_1", "bidding_config": config})
         found = await _capture(
             "chatgpt_ads_ad_groups_update_bid",
             {"ad_group_id": "g_1", "bidding_config": {"billing_event_type": "click"}},
@@ -646,6 +752,24 @@ class TestEndToEndRollback:
             {"budget": {"daily_spend_limit_micros": 75_000_000}},
             {"budget": prior},
         ]
+
+    async def test_a_fixed_bid_edit_is_rolled_back_with_the_prior_fixed_bid(
+        self, api: FakeAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        api.add(
+            "/ad_groups/g_1", body={"id": "g_1", "bidding_config": _FIXED_BID_PRIOR}
+        )
+        entry, plan, applied = await _dispatch_and_plan(
+            tmp_path, monkeypatch, api, "chatgpt_ads_ad_groups_update_bid",
+            {"ad_group_id": "g_1", "bidding_config": {"billing_event_type": "click"}},
+        )  # fmt: skip
+        assert entry.reversible_params["params"]["bidding_config"] == (
+            _FIXED_BID_RESTORED
+        )
+        assert plan.status is RollbackStatus.SUPPORTED
+        assert applied["dispatched_tool"] == "chatgpt_ads_ad_groups_update_bid"
+        last = [r for r in api.requests if r.method == "POST"][-1]
+        assert json.loads(last.content) == {"bidding_config": _FIXED_BID_RESTORED}
 
     async def test_a_partial_capture_plans_partial(
         self, api: FakeAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
