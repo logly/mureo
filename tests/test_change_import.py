@@ -68,6 +68,15 @@ from mureo.rollback import RollbackStatus, plan_batch_rollback, plan_rollback
 
 NOW = datetime(2026, 8, 7, 12, 0, 0, tzinfo=timezone.utc)
 
+#: Action names that read as a status kind and carry no create/remove token.
+_STATUS_ACTIONS = (
+    "google_ads_campaigns_update_status",
+    "meta_ads_ads_pause",
+    "meta_ads_ad_sets_enable",
+    "some_platform_campaigns_resume",
+    "chatgpt_ads_ads_archive",
+)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -740,6 +749,95 @@ class TestNoDoubleCounting:
             resource_type="CAMPAIGN", operation="ARCHIVE", changed_fields=("status",)
         )
         assert _operations_conflict(entry, change) is False
+
+    @pytest.mark.parametrize("operation", ["CREATE", "ADD", " create "])
+    @pytest.mark.parametrize("action", _STATUS_ACTIONS)
+    def test_a_creation_refutes_a_status_action(
+        self, action: str, operation: str
+    ) -> None:
+        """A pause, enable, archive or status update never creates the entity
+        it names, so a creation row is not its record (#1034)."""
+        entry = _log(action=action).action_log[0]
+        change = _change(operation=operation, changed_fields=("status",))
+        assert _operations_conflict(entry, change) is True
+
+    @pytest.mark.parametrize(
+        "operation", ["UPDATE", "REMOVE", "DELETE", "PAUSE", "ARCHIVE", ""]
+    )
+    @pytest.mark.parametrize("action", _STATUS_ACTIONS)
+    def test_only_a_creation_refutes_a_status_action(
+        self, action: str, operation: str
+    ) -> None:
+        """A status tool may set a removed state, and a feed may report an
+        archive as a removal, so a removal does not refute it."""
+        entry = _log(action=action).action_log[0]
+        change = _change(operation=operation, changed_fields=("status",))
+        assert _operations_conflict(entry, change) is False
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "google_ads_budget_update",
+            "google_ads_ad_groups_update",
+            "reviewed the account",
+        ],
+    )
+    def test_a_creation_does_not_refute_other_actions(self, action: str) -> None:
+        entry = _log(action=action).action_log[0]
+        change = _change(operation="CREATE")
+        assert _operations_conflict(entry, change) is False
+
+    def test_a_creation_refutes_a_hand_recorded_status_text(self) -> None:
+        """Free text that reads as a status change is a status action too, so
+        a creation recorded under it is imported: the over-import side."""
+        action = "Created the campaign and paused it"
+        assert action_kind(action) == KIND_STATUS
+        entry = _log(action=action).action_log[0]
+        change = _change(operation="CREATE", changed_fields=("status",))
+        assert _operations_conflict(entry, change) is True
+
+    @pytest.mark.parametrize(
+        ("action", "operation", "expected"),
+        [
+            ("some_platform_status_create", "CREATE", False),
+            ("some_platform_status_create", "REMOVE", True),
+            ("some_platform_status_remove", "REMOVE", False),
+            ("some_platform_status_remove", "CREATE", True),
+        ],
+    )
+    def test_a_create_or_remove_token_decides_before_the_status_kind(
+        self, action: str, operation: str, expected: bool
+    ) -> None:
+        assert action_kind(action) == KIND_STATUS
+        entry = _log(action=action).action_log[0]
+        change = _change(operation=operation, changed_fields=("status",))
+        assert _operations_conflict(entry, change) is expected
+
+    @pytest.mark.parametrize(
+        ("operation", "expected"),
+        [
+            ("CREATE", ImportVerdict.IMPORT),
+            ("UPDATE", ImportVerdict.ATTRIBUTED_TO_MUREO),
+        ],
+    )
+    def test_a_creation_is_not_absorbed_by_a_pause_of_the_entity(
+        self, operation: str, expected: ImportVerdict
+    ) -> None:
+        """An entity created outside mureo and paused by mureo minutes later
+        is still imported (#1034)."""
+        doc = _log(
+            action="google_ads_campaigns_update_status",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=2),
+        )
+        change = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            operation=operation,
+            changed_fields=("status",),
+            campaign_id="111",
+        )
+        assert classify_change(change, doc) is expected
 
 
 # ---------------------------------------------------------------------------
