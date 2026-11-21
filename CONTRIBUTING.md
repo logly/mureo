@@ -310,7 +310,7 @@ Shape drifts before logic breaks. Keep the shape the codebase already has (see a
 - **Do not add a function-local import to break an import cycle.** Fix the dependency direction. If an import inside a function is unavoidable, comment why on the import itself.
 - **One name per concept.** Reuse the existing parameter and field names (`period`, `customer_id`, `account_id`, `platform`, …).
 - **Broad excepts need a reason.** `except Exception` carries a `noqa: BLE001` with the reason, or narrows the type.
-- **Update the docs in the same PR** — `docs/architecture.md`, skill files, `CHANGELOG.md` — whenever the change touches what they describe.
+- **Update the docs in the same PR** — `docs/architecture.md`, skill files, `CHANGELOG.md` — whenever the change touches what they describe. `tests/test_doc_*.py` compare the docs' reference tables with the code: tool names and their required parameters, CLI commands, STATE.json field names, workflow skills, and throttle defaults (rate, burst, hourly cap). A change to any of these fails the suite until the matching doc edit is in the same change.
 - **Say why, not how the change came about.** Comments, docstrings, docs and `CHANGELOG.md` entries explain the reason for the code's shape. They do not record who asked for, decided, approved or rejected a change, review findings or their labels, workflow roles or phases, or internal documents and plan labels. Cite a public issue or PR number instead. `python scripts/check_comment_provenance.py` enforces this in CI.
 
 Reviewers check the diff for a new helper, a new failure shape, a new lazy import or a new name, and ask for a justification before approving.
