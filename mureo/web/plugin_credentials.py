@@ -14,7 +14,8 @@ module is the small bridge between that declarative metadata and the
 - :func:`annotate_field_state` adds each field's stored state and the
   provider's ``configured`` flag; :func:`plugin_platform_status` maps the
   built-in platforms a provider declares ``serves_platform`` for to the
-  provider standing in for them.
+  provider standing in for them, and :func:`plugin_provider_names` lists
+  the providers that have a descriptor.
 - :func:`save_plugin_credentials` persists one provider's values back
   to the secret store with three pieces of policy: unknown providers
   are rejected (no path for a stale UI to inject arbitrary top-level
@@ -284,6 +285,17 @@ def plugin_platform_status(
         if current is None or (candidate["configured"] and not current["configured"]):
             status[platform] = candidate
     return status
+
+
+def plugin_provider_names(plugins: Iterable[Mapping[str, Any]]) -> list[str]:
+    """The provider name of every descriptor, sorted.
+
+    A provider without a descriptor (not registered, e.g. a bundled one
+    switched off by its ``MUREO_DISABLE_*`` gate) is absent, so a surface
+    that needs that provider's own credential card can tell it would have
+    nothing to render.
+    """
+    return sorted(plugin["provider_name"] for plugin in plugins)
 
 
 def _oauth_to_dict(provider_class: type, locale: str = "en") -> dict[str, Any] | None:

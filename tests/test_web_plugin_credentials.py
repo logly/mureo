@@ -1724,3 +1724,39 @@ def test_platform_status_uses_locale_resolved_display_name(
     )
     status = plugin_platform_status(_annotated(tmp_path, {}, locale="ja"))
     assert status["search_console"]["display_name"] == "サーチコンソール（ベンダー）"
+
+
+# ---------------------------------------------------------------------------
+# plugin_provider_names
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_provider_names_are_every_descriptor_sorted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_provider_names
+
+    _register(
+        monkeypatch,
+        [
+            _entry("b_vendor", fields=_served_fields(), serves_platform="meta_ads"),
+            _entry("a_plain", fields=_served_fields()),
+        ],
+    )
+    assert plugin_provider_names(_annotated(tmp_path, {})) == ["a_plain", "b_vendor"]
+
+
+@pytest.mark.unit
+def test_provider_names_sort_an_unsorted_input() -> None:
+    from mureo.web.plugin_credentials import plugin_provider_names
+
+    plugins = [{"provider_name": "z_ads"}, {"provider_name": "acme_ads_context"}]
+    assert plugin_provider_names(plugins) == ["acme_ads_context", "z_ads"]
+
+
+@pytest.mark.unit
+def test_provider_names_empty_without_descriptors() -> None:
+    from mureo.web.plugin_credentials import plugin_provider_names
+
+    assert plugin_provider_names([]) == []

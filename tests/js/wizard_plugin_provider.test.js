@@ -23,6 +23,9 @@ const {
 const GOOGLE_PROVIDER = "acme_google";
 const SC_PROVIDER = "acme_search";
 const META_PROVIDER = "acme_meta";
+// /api/status `plugin_providers` with both bundled providers registered, so
+// the wizard offers Amazon Ads and ChatGPT Ads.
+const BUNDLED_PROVIDERS = ["amazon_ads", "chatgpt_ads"];
 
 /** One `plugin_platforms` entry, as /api/status sends it. */
 function served(providerName, configured) {
@@ -1001,6 +1004,7 @@ test.describe("the completed step", () => {
   test("ChatGPT Ads alone walks through the auth step to a saved row", () => {
     const page = loadWizardPage({});
     const wizard = page.sandbox.MUREO_WIZARD;
+    wizard.hydrateStateFromStatus({ plugin_providers: BUNDLED_PROVIDERS });
     wizard.state.platforms.chatgpt_ads = true;
 
     assert.equal(
@@ -1014,5 +1018,44 @@ test.describe("the completed step", () => {
     assert.equal(summary.querySelectorAll("li").length, 1);
     assert.ok(summary.querySelector('[data-i18n="wizard.platforms.chatgpt_ads"]'));
     assert.equal(page.root.querySelectorAll(".wizard-pending-reminder").length, 0);
+  });
+});
+
+// A bundled provider switched off is not registered, so /api/status
+// `plugin_providers` does not list it and its platform is not offered (#1048).
+test.describe("a platform whose provider is not listed", () => {
+  function platformLabels(page) {
+    const step = page.root.querySelector("[data-wizard-step]");
+    return step.querySelectorAll("label").map(function (label) {
+      return label.textContent.trim();
+    });
+  }
+
+  test("the platform step renders no checkbox for it", () => {
+    const page = loadWizardPage({});
+    const wizard = page.sandbox.MUREO_WIZARD;
+    wizard.hydrateStateFromStatus({ plugin_providers: ["amazon_ads"] });
+    wizard.state.stepIndex = wizard.effectiveSteps().indexOf("platforms");
+    wizard.render();
+
+    const labels = platformLabels(page);
+    assert.ok(labels.includes("wizard.platforms.amazon_ads"));
+    assert.ok(labels.includes("wizard.platforms.google_ads"));
+    assert.ok(!labels.includes("wizard.platforms.chatgpt_ads"));
+    assert.equal(labels.length, 6);
+  });
+
+  test("a selection made before the provider went away is cleared on hydrate", () => {
+    const page = loadWizardPage({});
+    const wizard = page.sandbox.MUREO_WIZARD;
+    wizard.hydrateStateFromStatus({ plugin_providers: BUNDLED_PROVIDERS });
+    wizard.state.platforms.chatgpt_ads = true;
+
+    wizard.hydrateStateFromStatus({ plugin_providers: ["amazon_ads"] });
+
+    assert.equal(wizard.state.platforms.chatgpt_ads, false);
+    assert.equal(wizard.effectiveSteps().join(","), "host,basic,platforms,completed");
+    wizard.state.stepIndex = wizard.effectiveSteps().indexOf("platforms");
+    assert.equal(wizard.isNextEnabled(), false);
   });
 });
