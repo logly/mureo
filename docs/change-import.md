@@ -172,8 +172,14 @@ So the discriminator is mureo's own log. **Four conditions, all required:**
 
 Additionally, a **definite** create-vs-remove disagreement refutes a match —
 mureo removing a negative keyword while the operator adds one on the same ad
-group in the same minute. It only refutes, never confirms: a `*_update` tool
-may well be an upsert, so requiring agreement would block far more true
+group in the same minute. A feed entry whose operation is a creation
+(`CREATE`, `ADD`) is likewise never attributed to a recorded status action: a
+pause, enable, archive or status update tool does not create the entity it
+names, so an entity created outside mureo and paused by mureo minutes later
+is still imported (#1034). A hand-recorded action whose text reads as a
+status change is treated the same way, so a creation recorded under such a
+text is imported too. The check only refutes, never confirms: a `*_update`
+tool may well be an upsert, so requiring agreement would block far more true
 matches than it protects.
 
 ### How "the same target" is decided
@@ -262,6 +268,7 @@ It is bounded by design, and the bound is what makes the advice usable:
 | Same entity, same setting, within 10 min of a mureo change | **No — silently attributed to mureo** |
 | Same entity, same setting, after 10 min | Yes |
 | Same entity, *different* setting (budget vs status), any time | Yes |
+| The entity's *creation* (operation `CREATE` or `ADD`), within 10 min of a mureo pause, enable, archive or status update of it | Yes (#1034) |
 | A *sibling* entity in the same campaign (different ad group, ad, keyword) | Yes — provided the sibling was recorded at its own granularity; see below |
 | A *broader* entity than mureo touched (campaign-wide vs one ad) | Yes |
 | A *narrower* entity than mureo touched (one ad vs campaign-wide) | Yes |

@@ -888,6 +888,28 @@ class TestAttribution:
         entry = _entry(tool, _OTHER_TARGET[tool])
         assert _verdict(tmp_path, entry, row) is ImportVerdict.IMPORT
 
+    def test_the_creation_of_an_ad_mureo_archived_is_imported(
+        self, tmp_path: Path
+    ) -> None:
+        """The creation row names ``status`` as its only classified field,
+        but an archive never creates the ad it names (#1034)."""
+        entry = _entry("chatgpt_ads_ads_archive", {"ad_id": "ad_1"})
+        row = _row(
+            audit_log_type="create_ad",
+            obj_type="Ad",
+            obj_id="ad_1",
+            campaign_id="cmpn_1",
+            changes={
+                "description": {"before": None, "after": "Example"},
+                "file_id": {"before": None, "after": "file_1"},
+                "status": {"before": None, "after": {"type": "active"}},
+                "obj_type": "Ad",
+                "name": {"before": None, "after": "Example"},
+                "title": {"before": None, "after": "Example"},
+            },
+        )
+        assert _verdict(tmp_path, entry, row) is ImportVerdict.IMPORT
+
 
 @pytest.fixture()
 def _isolated_provider_registry(monkeypatch: pytest.MonkeyPatch) -> None:

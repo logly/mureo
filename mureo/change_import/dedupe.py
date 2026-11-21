@@ -403,6 +403,14 @@ def _operations_conflict(entry: ActionLogEntry, change: ExternalChange) -> bool:
     removing a negative keyword while the operator adds one on the same ad
     group in the same minute — without demanding a verb mapping that is
     genuinely ambiguous for the ``*_update`` upsert family.
+
+    It also refutes a creation entry against a status action (#1034): a
+    pause, enable, archive or status update never creates the entity it
+    names, yet a creation row whose only classified field is ``status`` has
+    the status kind. A create/remove token in the action name is consulted
+    first and keeps its own verdict. A removal is not refuted the same way,
+    because a status tool may set a removed state and a feed may report an
+    archive as a removal.
     """
     feed_op = _OPERATION_ALIASES.get(change.operation.strip().upper(), "")
     if not feed_op:
@@ -411,7 +419,7 @@ def _operations_conflict(entry: ActionLogEntry, change: ExternalChange) -> bool:
     for token, own_op in _ACTION_OPERATIONS:
         if token in normalized:
             return own_op != feed_op
-    return False
+    return feed_op == "create" and action_kind(entry.action) == KIND_STATUS
 
 
 def _entry_matches(
