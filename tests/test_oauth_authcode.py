@@ -22,12 +22,14 @@ import httpx
 import pytest
 
 from mureo.oauth_authcode import (
+    CLIENT_AUTH_STYLES,
     AuthCodeResult,
     OAuthExchangeError,
     build_authorization_code_url,
     exchange_authorization_code,
     parse_loopback_callback_url,
     revoke_token,
+    validate_client_auth_style,
 )
 
 # ---------------------------------------------------------------------------
@@ -352,6 +354,57 @@ def test_exchange_rejects_invalid_headers_before_sending(
 
 
 # ---------------------------------------------------------------------------
+# validate_client_auth_style (#1054) — only "basic" and "body" exist, with no
+# normalisation, so a misspelled style cannot fall through to HTTP Basic.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("style", ["basic", "body"])
+def test_validate_client_auth_style_accepts_supported(style: str) -> None:
+    assert style in CLIENT_AUTH_STYLES
+    validate_client_auth_style(style, where="X.style")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("style", [None, 1, b"basic"])
+def test_validate_client_auth_style_rejects_non_str(style: object) -> None:
+    with pytest.raises(TypeError, match=r"^X\.style must be a str, got "):
+        validate_client_auth_style(style, where="X.style")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "style", ["", "Body", " body", "post", "client_secret_post", "none"]
+)
+def test_validate_client_auth_style_rejects_unsupported(style: str) -> None:
+    with pytest.raises(ValueError) as exc:
+        validate_client_auth_style(style, where="X.style")
+    message = str(exc.value)
+    assert message.startswith("X.style")
+    assert repr(style) in message
+    assert "'basic'" in message and "'body'" in message
+
+
+@pytest.mark.unit
+def test_exchange_rejects_unsupported_client_auth_before_sending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _FakeClient)
+    monkeypatch.setattr(_FakeClient, "last_call", {})
+    with pytest.raises(ValueError, match="^client_auth"):
+        exchange_authorization_code(
+            token_url="https://a.test/token",
+            code="AC",
+            client_id="CID",
+            client_secret="SECRET",
+            redirect_uri="http://127.0.0.1:1/oauth/callback",
+            client_auth="client_secret_post",
+        )
+    assert _FakeClient.last_call == {}
+
+
+# ---------------------------------------------------------------------------
 # revoke_token (#970) — RFC 7009 revocation: a bool for every HTTP answer, a
 # raise for a transport failure (logged once, by the caller), and nothing
 # secret in the logs.
@@ -495,6 +548,7 @@ def test_revoke_never_logs_token_or_secret(
         ({"revoke_url": "https://a.test/revoke\r\n"}, "revoke_url"),
         ({"headers": {"Authorization": "Bearer x"}}, "^revoke_token headers: "),
         ({"headers": {"X-Example": "a\r\nX: 1"}}, "^revoke_token headers: "),
+        ({"client_auth": "Body"}, "^client_auth"),
     ],
 )
 def test_revoke_rejects_bad_configuration_before_sending(

@@ -593,3 +593,50 @@ def test_reader_rejects_invalid_revoke_url(revoke_url: str) -> None:
 def test_reader_rejects_non_str_revoke_url() -> None:
     with pytest.raises(TypeError, match=r"broker\.account_oauth\.revoke_url"):
         get_account_oauth_config(_revoke_provider(b"https://a.test/revoke"))
+
+
+# ---------------------------------------------------------------------------
+# token_auth_style — only "basic" and "body" exist (#1054); any other value
+# fails at the boundary instead of being sent as HTTP Basic.
+# ---------------------------------------------------------------------------
+
+
+def _style_provider(token_auth_style: object) -> object:
+    class _Style:
+        name = "broker"
+        account_credential_fields = (_CLIENT_ID, _CLIENT_SECRET, _REFRESH)
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://a.test/authorize",
+            token_url="https://a.test/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            token_auth_style=token_auth_style,  # type: ignore[arg-type]
+        )
+
+    return _Style()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("style", ["basic", "body"])
+def test_reader_accepts_supported_token_auth_style(style: str) -> None:
+    cfg = get_account_oauth_config(_style_provider(style))
+    assert cfg is not None and cfg.token_auth_style == style
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("style", ["Body", "post"])
+def test_reader_rejects_unsupported_token_auth_style(style: str) -> None:
+    with pytest.raises(
+        ValueError, match=r"broker\.account_oauth\.token_auth_style"
+    ) as exc:
+        get_account_oauth_config(_style_provider(style))
+    assert repr(style) in str(exc.value)
+
+
+@pytest.mark.unit
+def test_reader_rejects_non_str_token_auth_style() -> None:
+    # The dataclass does not check types at run time, so this constructs.
+    provider = _style_provider(None)
+    with pytest.raises(TypeError, match=r"broker\.account_oauth\.token_auth_style"):
+        get_account_oauth_config(provider)

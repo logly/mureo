@@ -91,7 +91,11 @@ from mureo.core.providers.credentials import (
     AccountCredentialField,
     AccountOAuthConfig,
 )
-from mureo.oauth_authcode import validate_endpoint_url, validate_token_headers
+from mureo.oauth_authcode import (
+    validate_client_auth_style,
+    validate_endpoint_url,
+    validate_token_headers,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -621,12 +625,11 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
     When declared, the value must be an :class:`AccountOAuthConfig`
     (``TypeError`` otherwise) and its three ``*_field`` references must
     name keys of the provider's own ``account_credential_fields``
-    (``ValueError`` otherwise); ``token_headers`` is checked by
-    :func:`mureo.oauth_authcode.validate_token_headers` (``TypeError`` for
-    the shape, ``ValueError`` for a name or value). All checks fail loudly
-    at this boundary — a mis-typed declaration or a typo'd field name would
-    otherwise surface only as a dead "Authenticate" button or a credential
-    written under a key nothing reads.
+    (``ValueError`` otherwise); ``token_headers``, ``revoke_url`` and
+    ``token_auth_style`` get the checks the token request applies. All
+    checks fail loudly at this boundary — a mis-typed declaration or a
+    typo'd field name would otherwise surface only as a dead "Authenticate"
+    button or a credential written under a key nothing reads.
 
     Args:
         provider: The provider instance to introspect. Uses
@@ -639,11 +642,13 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
     Raises:
         TypeError: ``account_oauth`` is present but not an
             :class:`AccountOAuthConfig`, ``token_headers`` is not a tuple
-            of ``(name, value)`` ``str`` pairs, or ``revoke_url`` is not a str.
+            of ``(name, value)`` ``str`` pairs, or ``revoke_url`` or
+            ``token_auth_style`` is not a str.
         ValueError: A ``*_field`` reference does not name a declared
             ``account_credential_fields`` key, a ``token_headers`` entry
             has an invalid, reserved or repeated name or a non-visible-ASCII
-            value, or ``revoke_url`` is not a clean ``https://`` URL.
+            value, ``revoke_url`` is not a clean ``https://`` URL, or
+            ``token_auth_style`` is neither ``"basic"`` nor ``"body"``.
     """
     raw_name = getattr(provider, "name", None)
     identity = raw_name if isinstance(raw_name, str) and raw_name else repr(provider)
@@ -671,9 +676,20 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
             f"{identity}.account_oauth.accounts_field={config.accounts_field!r} "
             f"does not name a declared account_credential_fields key"
         )
+    _validate_request_declarations(identity, config)
+    return config
+
+
+def _validate_request_declarations(identity: str, config: AccountOAuthConfig) -> None:
+    """Check what the token and revocation requests send, in that order.
+
+    ``token_headers``, then ``revoke_url``, then ``token_auth_style``: the
+    declarations a request reads as-is, so a malformed one fails here, at
+    the boundary, not mid-request.
+    """
     _validate_token_headers(identity, config.token_headers)
     _validate_revoke_url(identity, config.revoke_url)
-    return config
+    _validate_token_auth_style(identity, config.token_auth_style)
 
 
 def _validate_token_headers(identity: str, headers: object) -> None:
@@ -701,6 +717,18 @@ def _validate_revoke_url(identity: str, revoke_url: object) -> None:
             f"{where} must be a str or None, got {type(revoke_url).__name__}"
         )
     validate_endpoint_url(revoke_url, where=where)
+
+
+def _validate_token_auth_style(identity: str, style: object) -> None:
+    """Fail loudly on an unsupported ``AccountOAuthConfig.token_auth_style``.
+
+    Delegates to :func:`mureo.oauth_authcode.validate_client_auth_style`,
+    the check the token exchange and revocation also apply, so a misspelled
+    style fails here, at the boundary, instead of being sent as another one.
+    """
+    validate_client_auth_style(
+        style, where=f"{identity}.account_oauth.token_auth_style"
+    )
 
 
 __all__ = [
