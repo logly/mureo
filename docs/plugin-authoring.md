@@ -579,7 +579,9 @@ set, mureo revokes the token stored in `target_field` at two moments:
   section from `~/.mureo/credentials.json`. The route also works for a
   provider without `revoke_url` (or without `account_oauth`): it only removes
   the section. It answers `{"status": "ok"}` when a section was removed and
-  `{"status": "noop"}` when nothing was stored.
+  `{"status": "noop"}` when nothing was stored. A provider that derived other
+  files from the token can remove them in its
+  [`on_oauth_disconnected`](#post-disconnect-hook-on_oauth_disconnected) hook.
 
 ```python
 account_oauth = AccountOAuthConfig(
@@ -712,6 +714,47 @@ class ExampleProvider:
         FilesystemSecretStore(path=credentials_path).save(
             "example_sibling", {"credentials_file": str(target)}
         )
+```
+
+#### Post-disconnect hook (`on_oauth_disconnected`)
+
+The counterpart of `on_oauth_persisted` (#985). A provider that derived
+files or a sibling section from its token can expose an
+`on_oauth_disconnected(*, credentials_path)` hook to remove them again when
+the operator disconnects the provider, so nothing derived from a removed
+token is left behind.
+
+- **When it fires.** Once per Disconnect, after the revocation attempt and
+  after the provider's section has been removed from `credentials.json`. It
+  fires for a provider without `revoke_url` (or without `account_oauth`)
+  too, since the route removes the section for those as well. It does not
+  fire when nothing was stored (the route answers `{"status": "noop"}`).
+- **What it receives.** Only `credentials_path`, the `credentials.json` the
+  section was removed from; delete any sibling section through
+  `FilesystemSecretStore(path=credentials_path)`. The section is already
+  gone, so the hook receives no credentials.
+- **Shape.** A plain function, `staticmethod` or `classmethod`, sync or
+  `async` (Disconnect awaits a coroutine result). mureo reads it with
+  `get_oauth_disconnect_hook(provider)`, which returns `None` when the
+  attribute is absent or not callable. The hook is read from the provider
+  class, never an instance, so an instance method (one that takes `self`)
+  cannot be called. It runs synchronously inside the
+  Disconnect request with no timeout, so it must not block on the network
+  indefinitely.
+- **Failure.** A hook that raises does not undo or fail the Disconnect. mureo
+  logs one warning that names the provider and the exception class (never
+  the exception text), and the route still answers `{"status": "ok"}`. Keep
+  the hook idempotent: a file or section that is already missing is not an
+  error.
+
+```python
+class ExampleProvider:
+    ...
+
+    @staticmethod
+    def on_oauth_disconnected(*, credentials_path: Path) -> None:
+        (credentials_path.parent / "example_derived.json").unlink(missing_ok=True)
+        FilesystemSecretStore(path=credentials_path).delete("example_sibling")
 ```
 
 #### Standing in for a built-in platform (`serves_platform`)

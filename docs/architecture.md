@@ -370,6 +370,9 @@ mureo/
 │                            #   zones.zone_or_none resolves a platform-reported time zone name
 │                            #   without raising; the Google Ads change feed and the ChatGPT Ads
 │                            #   client share it (#1008).
+│                            #   providers/oauth_hooks.py holds the getters for a plugin provider's
+│                            #   optional OAuth hooks (list_oauth_accounts, on_oauth_persisted,
+│                            #   on_oauth_disconnected #985); it imports nothing from the registry.
 │                            #   rollback, policy, amazon_ads, chatgpt_ads and core never import mureo.mcp (#863):
 │                            #   the server publishes what they need at load — plugin reversal keys
 │                            #   (rollback.planner.set_plugin_reversal_keys) and built-in tool names
@@ -444,7 +447,8 @@ mureo/
     │                        #   500 basic_setup_failed / basic_clear_failed + "steps" when every
     │                        #   step failed (#891)
     ├── plugin_oauth_revoke.py # Plugin Disconnect + best-effort RFC 7009 revocation of a stored
-    │                        #   token at AccountOAuthConfig.revoke_url, on re-auth and Disconnect (#970)
+    │                        #   token at AccountOAuthConfig.revoke_url, on re-auth and Disconnect (#970);
+    │                        #   Disconnect then calls the provider's on_oauth_disconnected hook (#985)
     ├── plugin_oauth_spec.py # PluginOAuthSpec (the frozen plugin OAuth hand-off from oauth_bridge.py
     │                        #   to auth_wizard.py) + persist_plugin_token, the callback's save step
     ├── static_assets.py     # The files GET /static/<name> may serve (_STATIC_ALLOWLIST) and

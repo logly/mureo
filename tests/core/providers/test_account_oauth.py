@@ -25,6 +25,7 @@ from mureo.core.providers import (
     AccountCredentialField,
     AccountOAuthConfig,
     get_account_oauth_config,
+    get_oauth_disconnect_hook,
 )
 
 # ---------------------------------------------------------------------------
@@ -331,6 +332,66 @@ def test_get_oauth_persist_hook_non_callable_returns_none() -> None:
         on_oauth_persisted = "not callable"
 
     assert get_oauth_persist_hook(_Bad()) is None
+
+
+# ---------------------------------------------------------------------------
+# #985 — get_oauth_disconnect_hook hook discovery.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_get_oauth_disconnect_hook_returns_staticmethod() -> None:
+    class _WithHook:
+        name = "broker"
+
+        @staticmethod
+        def on_oauth_disconnected(*, credentials_path: Any) -> str:
+            return "disconnected"
+
+    hook = get_oauth_disconnect_hook(_WithHook)
+    assert callable(hook)
+    assert hook(credentials_path=None) == "disconnected"
+
+
+@pytest.mark.unit
+def test_get_oauth_disconnect_hook_returns_classmethod() -> None:
+    class _WithHook:
+        name = "broker"
+
+        @classmethod
+        def on_oauth_disconnected(cls, *, credentials_path: Any) -> str:
+            return cls.name
+
+    hook = get_oauth_disconnect_hook(_WithHook)
+    assert callable(hook)
+    assert hook(credentials_path=None) == "broker"
+
+
+@pytest.mark.unit
+def test_get_oauth_disconnect_hook_returns_plain_function() -> None:
+    def _hook(*, credentials_path: Any) -> str:
+        return "plain"
+
+    class _WithHook:
+        name = "broker"
+
+    provider = _WithHook()
+    provider.on_oauth_disconnected = _hook  # type: ignore[attr-defined]
+    assert get_oauth_disconnect_hook(provider) is _hook
+
+
+@pytest.mark.unit
+def test_get_oauth_disconnect_hook_absent_returns_none() -> None:
+    assert get_oauth_disconnect_hook(_PlainProvider()) is None
+
+
+@pytest.mark.unit
+def test_get_oauth_disconnect_hook_non_callable_returns_none() -> None:
+    class _Bad:
+        name = "bad"
+        on_oauth_disconnected = "not callable"
+
+    assert get_oauth_disconnect_hook(_Bad()) is None
 
 
 # ---------------------------------------------------------------------------

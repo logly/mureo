@@ -2029,7 +2029,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
 
         The plugin counterpart of ``/api/credentials/remove``: the whole
         section goes, after a best-effort revocation of the stored OAuth
-        token when the provider declares ``revoke_url``. A malformed
+        token when the provider declares ``revoke_url``, and the provider's
+        ``on_oauth_disconnected`` hook then runs (#985). A malformed
         ``account_oauth`` declaration is ``400 invalid_oauth_config``, as on
         ``/oauth/start``, and removes nothing.
         """

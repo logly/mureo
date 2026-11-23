@@ -4,8 +4,9 @@ Re-exports the stable ABI from :mod:`mureo.core.providers.capabilities`,
 :mod:`mureo.core.providers.base`, the four Phase 1 domain Protocols
 (:mod:`mureo.core.providers.campaign`, :mod:`~.keyword`, :mod:`~.audience`,
 :mod:`~.extension`), the shared domain models / enums in
-:mod:`mureo.core.providers.models`, and the entry-points-based discovery
-:mod:`mureo.core.providers.registry`.
+:mod:`mureo.core.providers.models`, the entry-points-based discovery
+:mod:`mureo.core.providers.registry`, and the optional OAuth hook getters in
+:mod:`mureo.core.providers.oauth_hooks`.
 """
 
 from __future__ import annotations
@@ -56,6 +57,11 @@ from mureo.core.providers.models import (
     UpdateAdRequest,
     UpdateCampaignRequest,
 )
+from mureo.core.providers.oauth_hooks import (
+    get_oauth_account_lister,
+    get_oauth_disconnect_hook,
+    get_oauth_persist_hook,
+)
 from mureo.core.providers.registry import (
     PROVIDERS_ENTRY_POINT_GROUP,
     SKILLS_ENTRY_POINT_GROUP,
@@ -67,8 +73,6 @@ from mureo.core.providers.registry import (
     discover_providers,
     get_account_credential_fields,
     get_account_oauth_config,
-    get_oauth_account_lister,
-    get_oauth_persist_hook,
     get_provider,
     list_providers_by_capability,
     register_provider_class,
@@ -119,6 +123,7 @@ __all__ = [
     "get_account_credential_fields",
     "get_account_oauth_config",
     "get_oauth_account_lister",
+    "get_oauth_disconnect_hook",
     "get_oauth_persist_hook",
     "get_provider",
     "get_serves_platform",

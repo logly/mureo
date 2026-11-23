@@ -47,7 +47,7 @@ from mureo.core.providers import (
     get_serves_platform,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
-from mureo.web._helpers import run_coroutine
+from mureo.web._helpers import run_best_effort_hook, run_coroutine
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable
@@ -521,22 +521,14 @@ def notify_oauth_persisted(
     if hook is None:
         return
     view = MappingProxyType(dict(credentials))
-    # The hook call and its await share one guard. The token is already
-    # saved, so a failure is logged and swallowed: the wizard still
-    # redirects to ``/done``. Like ``list_oauth_accounts`` above, the hook
-    # runs on the handler thread with no timeout: a hanging hook stalls
-    # the redirect, so hooks must not block on the network indefinitely.
-    try:
-        result: Any = hook(view, credentials_path=credentials_path)
-        if inspect.isawaitable(result):
-            run_coroutine(result)
-    except Exception as exc:  # noqa: BLE001 — opaque plugin hook; the token is saved.
-        # Log the type only; the exception's str() may carry the token.
-        logger.warning(
-            "Plugin OAuth post-persist hook failed for provider %s: %s",
-            provider_name,
-            type(exc).__name__,
-        )
+    # The token is already saved, so a failing hook is logged and the wizard
+    # still redirects to ``/done``.
+    run_best_effort_hook(
+        lambda: hook(view, credentials_path=credentials_path),
+        log=logger,
+        label="post-persist",
+        provider_name=provider_name,
+    )
 
 
 def multi_account_picker_scope() -> dict[str, frozenset[str]]:
