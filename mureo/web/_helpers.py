@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import inspect
 import json
 import logging
 import secrets as _secrets
@@ -17,7 +18,7 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping
+    from collections.abc import Callable, Collection, Mapping
     from http.server import BaseHTTPRequestHandler
     from pathlib import Path
 
@@ -41,6 +42,33 @@ def run_coroutine(coro: Any) -> Any:
         return asyncio.run(coro)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(asyncio.run, coro).result()
+
+
+def run_best_effort_hook(
+    call: Callable[[], Any], *, log: logging.Logger, label: str, provider_name: str
+) -> None:
+    """Run an optional plugin OAuth hook; a failure is one WARNING, never raised.
+
+    ``call`` invokes the hook with its arguments. A coroutine result is
+    awaited with :func:`run_coroutine` under the same guard. The hooks this
+    serves run after their step is already done (a token saved, a section
+    removed), so a failing hook must not turn that step into an error. The
+    warning goes to ``log``, the caller's logger, and names ``label``, the
+    provider and the exception class only: the exception's ``str()`` may
+    carry a secret. The hook runs on the handler thread with no timeout, so
+    a hook must not block on the network indefinitely.
+    """
+    try:
+        result = call()
+        if inspect.isawaitable(result):
+            run_coroutine(result)
+    except Exception as exc:  # noqa: BLE001 — opaque plugin hook; its step is done.
+        log.warning(
+            "Plugin OAuth %s hook failed for provider %s: %s",
+            label,
+            provider_name,
+            type(exc).__name__,
+        )
 
 
 # Cap form bodies to a small size — the configure UI only ever POSTs

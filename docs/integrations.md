@@ -33,7 +33,7 @@ mureo providers add ga4-official
 
 mureo installs the official server via `pipx` (`pipx install analytics-mcp`) and registers it in your MCP client config alongside mureo — no `.mcp.json` hand-editing required. `mureo configure` walks you through the same step from the dashboard or the setup wizard.
 
-Re-running `mureo configure` lists GA4 on the setup wizard's platform step under every credential backend, including a multi-account one. When the credential store already holds a complete `ga4` section (both the credential file path and the project id; for example one written by a credential provider's `on_oauth_persisted` hook, see #939), the wizard skips the credential-path and project-id inputs and goes straight to the install step.
+Re-running `mureo configure` lists GA4 on the setup wizard's platform step under every credential backend, including a multi-account one. When the credential store already holds a complete `ga4` section (both the credential file path and the project id; for example one written by a credential provider's `on_oauth_persisted` hook, see #939), the wizard skips the credential-path and project-id inputs and goes straight to the install step. A provider that wrote that section can remove it again in its `on_oauth_disconnected` hook when the operator disconnects the provider (#985).
 
 ### What GA4 Data Adds to mureo Workflows
 

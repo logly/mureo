@@ -596,6 +596,31 @@ def test_disconnect_revokes_stored_token_through_the_route(
 
 
 @pytest.mark.unit
+def test_disconnect_failing_hook_still_answers_ok(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#985 — the post-disconnect hook is best effort: a hook that raises
+    leaves the section removed and the route answering ``ok``."""
+
+    calls: list[object] = []
+
+    def _hook(*, credentials_path: object) -> None:
+        calls.append(credentials_path)
+        raise RuntimeError("hook down")
+
+    cls = _oauth_class()
+    cls.on_oauth_disconnected = staticmethod(_hook)  # type: ignore[attr-defined]
+    monkeypatch.setitem(default_registry._entries, "yahoo_ads", _entry(cls))
+    _store_section(wizard, {"client_id": "CID", "refresh_token": "RT"})
+    status, body = post(wizard, _DISCONNECT, {})
+    assert status == 200, body
+    assert body == {"status": "ok", "provider": "yahoo_ads"}
+    assert calls == [wizard.host_paths.credentials_path]
+    saved = json.loads(wizard.host_paths.credentials_path.read_text())
+    assert "yahoo_ads" not in saved
+
+
+@pytest.mark.unit
 def test_disconnect_500_when_removal_fails(wizard: ConfigureWizard) -> None:
     with patch(
         "mureo.web.handlers.disconnect_plugin_provider",

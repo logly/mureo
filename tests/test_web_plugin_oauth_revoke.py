@@ -18,6 +18,7 @@ import pytest
 
 from mureo.core.providers import AccountCredentialField, AccountOAuthConfig
 from mureo.core.providers.registry import ProviderEntry, default_registry
+from mureo.core.secret_store import FilesystemSecretStore
 from mureo.web.plugin_credentials import UnknownProviderError
 from mureo.web.plugin_oauth_revoke import (
     disconnect_plugin_provider,
@@ -49,13 +50,22 @@ def _oauth(revoke_url: str | None) -> AccountOAuthConfig:
     )
 
 
-def _entry(name: str, oauth: AccountOAuthConfig | None) -> ProviderEntry:
+def _entry(
+    name: str,
+    oauth: AccountOAuthConfig | None,
+    hook: Any | None = None,
+    *,
+    as_classmethod: bool = False,
+) -> ProviderEntry:
     class _Provider:
         account_credential_fields = _FIELDS
 
     _Provider.name = name  # type: ignore[attr-defined]
     if oauth is not None:
         _Provider.account_oauth = oauth  # type: ignore[attr-defined]
+    if hook is not None:
+        wrapped = classmethod(hook) if as_classmethod else staticmethod(hook)
+        _Provider.on_oauth_disconnected = wrapped  # type: ignore[attr-defined]
     return ProviderEntry(
         name=name,
         display_name=name,
@@ -310,3 +320,151 @@ def test_disconnect_manual_provider_removes_section(tmp_path: Path) -> None:
         assert disconnect_plugin_provider("manual_ads", credentials_path=path) is True
     revoke.assert_not_called()
     assert "manual_ads" not in _root(path)
+
+
+# ---------------------------------------------------------------------------
+# #985 — the provider's on_oauth_disconnected hook runs once after the
+# section is removed; a failing hook keeps the removal and the result.
+# ---------------------------------------------------------------------------
+
+
+def _register(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    oauth: AccountOAuthConfig | None,
+    hook: Any,
+    *,
+    as_classmethod: bool = False,
+) -> None:
+    entry = _entry(name, oauth, hook, as_classmethod=as_classmethod)
+    monkeypatch.setitem(default_registry._entries, name, entry)
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_providers")
+def test_disconnect_hook_called_once_after_revocation_and_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    order: list[str] = []
+    calls: list[dict[str, Any]] = []
+
+    def _hook(*, credentials_path: Path) -> None:
+        order.append("hook")
+        calls.append(
+            {"credentials_path": credentials_path, "root": _root(credentials_path)}
+        )
+
+    def _revoke(**_: Any) -> bool:
+        order.append("revoke")
+        return True
+
+    _register(monkeypatch, "broker_ads", _oauth(_REVOKE_URL), _hook)
+    path = _write(tmp_path, {"broker_ads": dict(_FULL), "other": {"k": "v"}})
+    with patch(f"{_LOGGER}.revoke_token", side_effect=_revoke):
+        assert disconnect_plugin_provider("broker_ads", credentials_path=path) is True
+    assert order == ["revoke", "hook"]
+    assert len(calls) == 1
+    assert calls[0]["credentials_path"] == path
+    assert calls[0]["root"] == {"other": {"k": "v"}}
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_providers")
+def test_disconnect_hook_not_called_when_nothing_stored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hook = MagicMock()
+    _register(monkeypatch, "broker_ads", _oauth(_REVOKE_URL), hook)
+    path = _write(tmp_path, {"other": {"k": "v"}})
+    assert disconnect_plugin_provider("broker_ads", credentials_path=path) is False
+    hook.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_providers")
+def test_disconnect_hook_not_called_when_the_removal_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hook = MagicMock()
+    _register(monkeypatch, "plain_oauth", _oauth(None), hook)
+    path = _write(tmp_path, {"plain_oauth": dict(_FULL)})
+    with (
+        patch.object(FilesystemSecretStore, "delete", side_effect=OSError("disk")),
+        pytest.raises(OSError, match="disk"),
+    ):
+        disconnect_plugin_provider("plain_oauth", credentials_path=path)
+    hook.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_providers")
+def test_disconnect_hook_failure_keeps_removal_and_logs_class_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def _hook(*, credentials_path: Path) -> None:
+        raise RuntimeError("secret-text")
+
+    _register(monkeypatch, "plain_oauth", _oauth(None), _hook)
+    path = _write(tmp_path, {"plain_oauth": dict(_FULL)})
+    assert disconnect_plugin_provider("plain_oauth", credentials_path=path) is True
+    assert "plain_oauth" not in _root(path)
+    records = _revoke_records(caplog)
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "plain_oauth" in message
+    assert "RuntimeError" in message
+    assert "secret-text" not in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_providers")
+def test_disconnect_async_hook_is_awaited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Path] = []
+
+    async def _hook(*, credentials_path: Path) -> None:
+        seen.append(credentials_path)
+
+    _register(monkeypatch, "plain_oauth", _oauth(None), _hook)
+    path = _write(tmp_path, {"plain_oauth": dict(_FULL)})
+    assert disconnect_plugin_provider("plain_oauth", credentials_path=path) is True
+    assert seen == [path]
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_providers")
+def test_disconnect_classmethod_hook_receives_the_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[str, Path]] = []
+
+    def _hook(cls: Any, *, credentials_path: Path) -> None:
+        seen.append((cls.name, credentials_path))
+
+    _register(monkeypatch, "plain_oauth", _oauth(None), _hook, as_classmethod=True)
+    path = _write(tmp_path, {"plain_oauth": dict(_FULL)})
+    assert disconnect_plugin_provider("plain_oauth", credentials_path=path) is True
+    assert seen == [("plain_oauth", path)]
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_providers")
+@pytest.mark.parametrize(
+    ("name", "oauth"),
+    [("manual_ads", None), ("plain_oauth", _oauth(None))],
+    ids=["no_account_oauth", "no_revoke_url"],
+)
+def test_disconnect_hook_fires_without_revocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    oauth: AccountOAuthConfig | None,
+) -> None:
+    hook = MagicMock(return_value=None)
+    _register(monkeypatch, name, oauth, hook)
+    path = _write(tmp_path, {name: {"client_id": "CID"}})
+    with patch(f"{_LOGGER}.revoke_token") as revoke:
+        assert disconnect_plugin_provider(name, credentials_path=path) is True
+    revoke.assert_not_called()
+    hook.assert_called_once_with(credentials_path=path)
