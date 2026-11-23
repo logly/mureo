@@ -625,6 +625,15 @@ rejects anything else (`TypeError` for a value that is not a `str`,
 `ValueError` otherwise), so Authenticate and Disconnect answer
 `400 invalid_oauth_config` for such a provider.
 
+`token_auth_style`, which the code exchange and both revocations share, takes
+exactly `"basic"` (the default) or `"body"`; nothing is normalised, so
+`"Body"` or `"client_secret_post"` is not accepted. `get_account_oauth_config`
+rejects any other value (`TypeError` for a value that is not a `str`,
+`ValueError` otherwise) instead of presenting the client id and secret as
+HTTP Basic: the dashboard leaves that provider's credentials card out, with
+a WARNING naming the provider, and Authenticate and Disconnect answer
+`400 invalid_oauth_config`.
+
 #### Post-auth account picker (`list_oauth_accounts`)
 
 A provider whose `AccountOAuthConfig` names an `accounts_field` can also

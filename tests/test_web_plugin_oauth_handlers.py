@@ -459,6 +459,44 @@ def test_start_400_when_token_headers_invalid(
 
 
 @pytest.mark.unit
+def test_start_400_when_token_auth_style_unsupported(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1054 — an unsupported ``token_auth_style`` fails the reader's
+    validation instead of being sent as HTTP Basic, so start answers the
+    clean 400 before the bridge (and its token request) is touched."""
+
+    class _BadStyle:
+        name = "broker_ads"
+        display_name = "Broker Ads"
+        capabilities = frozenset()
+        account_credential_fields = _FIELDS
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://broker.example.com/oauth/authorize",
+            token_url="https://broker.example.com/oauth/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            token_auth_style="client_secret_post",
+        )
+
+    monkeypatch.setitem(default_registry._entries, "broker_ads", _entry(_BadStyle))
+    with (
+        patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start,
+        patch("mureo.oauth_authcode.httpx.Client") as mock_client,
+    ):
+        status, body = post(
+            wizard,
+            "/api/credentials/plugins/broker_ads/oauth/start",
+            _authenticate_payload(),
+        )
+    assert status == 400
+    assert body["error"] == "invalid_oauth_config"
+    mock_start.assert_not_called()
+    mock_client.assert_not_called()
+
+
+@pytest.mark.unit
 def test_start_404_for_unknown_provider(wizard: ConfigureWizard) -> None:
     status, body = post(wizard, "/api/credentials/plugins/nope_ads/oauth/start")
     assert status == 404
@@ -551,6 +589,43 @@ def test_disconnect_400_when_revoke_url_invalid(
     assert body["error"] == "invalid_oauth_config"
     # A rejected declaration removes nothing.
     assert "broker_ads" in json.loads(path.read_text())
+
+
+@pytest.mark.unit
+def test_disconnect_400_when_token_auth_style_unsupported(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1054 — an unsupported ``token_auth_style`` is refused before any
+    revocation is attempted, and the stored section stays."""
+
+    class _BadStyle:
+        name = "broker_ads"
+        display_name = "Broker Ads"
+        capabilities = frozenset()
+        account_credential_fields = _FIELDS
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://broker.example.com/oauth/authorize",
+            token_url="https://broker.example.com/oauth/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            token_auth_style="Body",
+            revoke_url="https://broker.example.com/oauth/revoke",
+        )
+
+    monkeypatch.setitem(default_registry._entries, "broker_ads", _entry(_BadStyle))
+    path = wizard.host_paths.credentials_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    section = {"client_id": "CID", "client_secret": "SECRET", "refresh_token": "RT"}
+    path.write_text(json.dumps({"broker_ads": section}))
+    with patch("mureo.web.plugin_oauth_revoke.revoke_token") as revoke:
+        status, body = post(
+            wizard, "/api/credentials/plugins/broker_ads/disconnect", {}
+        )
+    assert status == 400
+    assert body["error"] == "invalid_oauth_config"
+    revoke.assert_not_called()
+    assert json.loads(path.read_text())["broker_ads"] == section
 
 
 @pytest.mark.unit

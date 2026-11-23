@@ -177,6 +177,9 @@ class AccountOAuthConfig:
             providers expect); ``"body"`` sends them in the form body for
             providers that reject Basic — Yahoo! JAPAN biz-oauth requires
             this. Declarative only; the OSS exchange (#201) honours it.
+            Any other value is rejected by
+            :func:`mureo.core.providers.get_account_oauth_config`
+            (``ValueError``; ``TypeError`` for a non-str).
         accounts_field: ``key`` of the declared field that names a
             *per-account selection* the operator makes **after** consent —
             e.g. a broker-managed Meta provider whose ``access_token`` is

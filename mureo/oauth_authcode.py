@@ -10,8 +10,9 @@ code — Yahoo! JAPAN Ads (``https://biz-oauth.yahoo.co.jp/oauth/v1/...``)
 being the first consumer. It also revokes a token at a declared RFC 7009
 revocation endpoint (:func:`revoke_token`, #970).
 
-Client authentication uses the HTTP Basic scheme (RFC 6749 §2.3.1, the
-form Yahoo's token endpoint expects). Secrets — the client secret, the
+Client authentication is one of :data:`CLIENT_AUTH_STYLES` (RFC 6749
+§2.3.1): the HTTP Basic header, or ``client_id`` / ``client_secret`` form
+fields for an endpoint that rejects Basic. Secrets — the client secret, the
 authorization code, and the obtained tokens — are never written to logs:
 errors report only the exception *type*, never request/response bodies.
 """
@@ -61,6 +62,11 @@ _RESERVED_HEADER_NAMES: Final[frozenset[str]] = frozenset(
         "transfer-encoding",
     }
 )
+
+#: The client authentication styles of RFC 6749 §2.3.1 this module can send:
+#: ``"basic"`` (the HTTP ``Authorization`` header) and ``"body"`` (form
+#: fields). The one list both the declaration check and the request read.
+CLIENT_AUTH_STYLES: Final[tuple[str, ...]] = ("basic", "body")
 
 
 class OAuthExchangeError(RuntimeError):
@@ -134,6 +140,22 @@ def validate_token_headers(headers: object, *, where: str) -> None:
             raise ValueError(
                 f'{where}: header "{name}" value must be non-empty visible ASCII'
             )
+
+
+def validate_client_auth_style(style: object, *, where: str) -> None:
+    """Fail loudly on a client authentication style this module cannot send.
+
+    ``style`` must be a ``str`` (``TypeError`` otherwise) and one of
+    :data:`CLIENT_AUTH_STYLES` exactly (``ValueError`` otherwise). Nothing is
+    normalised — ``"Body"`` and ``" body"`` are refused — because a value
+    that is not recognised would otherwise be sent as some other style
+    without a word. ``where`` prefixes every message.
+    """
+    if not isinstance(style, str):
+        raise TypeError(f"{where} must be a str, got {type(style).__name__}")
+    if style not in CLIENT_AUTH_STYLES:
+        supported = ", ".join(repr(s) for s in CLIENT_AUTH_STYLES)
+        raise ValueError(f"{where}={style!r} is not supported; use one of {supported}")
 
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
@@ -226,7 +248,7 @@ def exchange_authorization_code(
       expect.
     - ``"body"`` — client id/secret in the form body (RFC 6749 §2.3.1's
       alternative). Required by providers that reject Basic, e.g. Yahoo!
-      JAPAN biz-oauth.
+      JAPAN biz-oauth. Any other value raises ``ValueError``.
 
     ``headers``, when given, are sent as extra HTTP headers on the token
     request (e.g. an installation identifier a brokering endpoint requires);
@@ -298,11 +320,14 @@ def _client_auth(
 ) -> tuple[tuple[str, str] | None, dict[str, str]]:
     """Return ``(basic_auth, extra_body_fields)`` for ``client_auth``.
 
-    ``"body"`` puts the client id/secret in the form body (Yahoo! JAPAN
-    biz-oauth rejects Basic) and no Basic credentials; anything else is the
-    HTTP Basic header (RFC 6749 §2.3.1). The token exchange and revocation
-    share this so both present the client the same way.
+    ``"basic"`` is the HTTP Basic header (RFC 6749 §2.3.1); ``"body"`` puts
+    the client id/secret in the form body (Yahoo! JAPAN biz-oauth rejects
+    Basic) and no Basic credentials. Any other value raises ``ValueError``
+    (``TypeError`` for a non-str) through :func:`validate_client_auth_style`
+    before anything is sent. The token exchange and revocation share this so
+    both present the client the same way.
     """
+    validate_client_auth_style(client_auth, where="client_auth")
     if client_auth == "body":
         return None, {"client_id": client_id, "client_secret": client_secret}
     return (client_id, client_secret), {}
@@ -329,7 +354,8 @@ def revoke_token(
 
     Raises ``httpx.HTTPError`` when the request cannot be made or completed;
     nothing is logged for it here, so the caller's report is the only one. A
-    malformed ``revoke_url`` or ``headers`` is a configuration error and
+    malformed ``revoke_url``, ``headers`` or ``client_auth`` is a
+    configuration error and
     raises ``ValueError`` / ``TypeError`` before anything is sent. Nothing
     from the request or the response is logged.
     """
@@ -355,12 +381,14 @@ def _is_invalid_token(response: httpx.Response) -> bool:
 
 
 __all__ = [
+    "CLIENT_AUTH_STYLES",
     "AuthCodeResult",
     "OAuthExchangeError",
     "build_authorization_code_url",
     "exchange_authorization_code",
     "parse_loopback_callback_url",
     "revoke_token",
+    "validate_client_auth_style",
     "validate_endpoint_url",
     "validate_token_headers",
 ]
