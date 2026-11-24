@@ -3862,6 +3862,14 @@ credentials (#1057): ChatGPT Ads then fails with `no_credentials`, and
 Amazon Ads reports the platform as not configured. Store the section per
 account instead.
 
+The `GOOGLE_ADS_*` and `META_ADS_*` fallbacks stay on, and Search Console
+reuses the Google credentials. On a multi-account backend those
+credentials are the operator-shared ones by design, and the account a
+call reaches is bound to your allow-lists (`google_ads_customer_ids`,
+`meta_account_ids`, `search_console_sites`), which fail closed when
+absent. A `GOOGLE_ADS_CUSTOMER_ID` default outside the client's list is
+not used.
+
 #### `ui_plugin_credential_fields` — scoping the dashboard credential form
 
 A per-provider allow-list of the credential-field keys the configure
