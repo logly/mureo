@@ -366,6 +366,12 @@ def runtime_account_env_fallback_allowed() -> bool:
     its own section would otherwise read another account's credentials
     instead of failing with ``no_credentials`` (#1057).
 
+    The Google Ads, Meta Ads and Search Console loaders do not consult it:
+    on such a backend their credentials are operator-shared by design, and
+    the account each call reaches is bound to the client's allow-list
+    (:func:`runtime_google_ads_customer_ids` and its siblings, which fail
+    closed), including a ``GOOGLE_ADS_CUSTOMER_ID`` default.
+
     Resolution is the negation of :func:`runtime_multi_account_auth`, so it
     inherits that function's rules: no factory registered → ``True``
     (single-account installs keep the fallback); a store declaring
