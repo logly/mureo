@@ -2,7 +2,7 @@
 name: _mureo-chatgpt-ads
 description: "ChatGPT Ads (bundled provider over OpenAI's Advertiser API): read the ad account, spending limits, campaigns, ad groups, ads, performance insights and the change history; pause and activate, rename, reschedule, set budgets, bids and the account daily spending limit, each recorded with a reversal; create campaigns, ad groups and ads (always paused), archive them irreversibly, upload images, preview ads and search locations; create and fill custom audiences from a local identifier file; set up pixels and conversion events and report conversions."
 metadata:
-  version: 0.45.0
+  version: 0.46.0
   openclaw:
     category: "advertising"
     requires:
