@@ -123,6 +123,12 @@ as Google and Meta).
 `AMAZON_ADS_CLIENT_SECRET`. Anything less and mureo reports Amazon as
 not configured.
 
+A multi-account backend (a credential store declaring
+`multi_account_auth`) never reads these variables: they name one
+account, and every account that backend serves shares one process
+environment, so an account without its own `amazon_ads` section is
+not configured rather than using another account's credentials.
+
 ## 4. Fallback: edit `~/.mureo/credentials.json` by hand
 
 Everything the UI and the environment variables do is just this

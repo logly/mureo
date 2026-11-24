@@ -132,6 +132,8 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 
 「条件付き」とは、クライアント ID に加えて `AMAZON_ADS_ACCESS_TOKEN` **か**、`AMAZON_ADS_REFRESH_TOKEN` と `AMAZON_ADS_CLIENT_SECRET` の**両方**、のどちらかという意味です。[amazon-ads.ja.md](amazon-ads.ja.md) 参照。
 
+複数アカウント対応のバックエンド（`multi_account_auth` を宣言する認証情報の保存先）では、`AMAZON_ADS_*` の変数を読み込みません。[amazon-ads.ja.md](amazon-ads.ja.md#3-代替手段-環境変数) 参照。
+
 ### ChatGPT Ads
 
 | 変数 | 必須 | 説明 |
@@ -139,6 +141,8 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 | `CHATGPT_ADS_API_KEY` | キーを保存していない場合は、はい | ご自身の広告アカウントの Advertiser API キー。Ads Manager の設定ページで作成します。1 つのキーで読み取れる広告アカウントは 1 つです |
 
 保存先は `~/.mureo/credentials.json` の `chatgpt_ads` セクションで、項目は `api_key` の 1 つです。`mureo configure` の **ChatGPT Ads** タブが書き込みます。空の値は未設定として扱います。ChatGPT Ads に `OPENAI_API_KEY` が使われることはありません。[chatgpt-ads.ja.md](chatgpt-ads.ja.md) 参照。
+
+複数アカウント対応のバックエンド（`multi_account_auth` を宣言する認証情報の保存先）では、`CHATGPT_ADS_API_KEY` を読み込みません。[chatgpt-ads.ja.md](chatgpt-ads.ja.md#環境変数) 参照。
 
 **解決順序**: credentials.json が優先されます。環境変数は、credentials.json の該当セクションが無いか不完全な場合にのみ参照されます。
 

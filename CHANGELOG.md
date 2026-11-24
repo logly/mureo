@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Fixed
+
+- **A multi-account backend no longer falls back to the `CHATGPT_ADS_API_KEY` and `AMAZON_ADS_*` environment variables** (#1057). Both credential loaders read those variables whenever the active `SecretStore` had no usable section. The variables name one ad account, while a store declaring `multi_account_auth` serves many accounts from one process with one environment, so an account without its own section was served another account's credentials instead of failing. Under such a store the loaders now skip the environment, and the account gets the `no_credentials` auth failure (ChatGPT Ads) or is reported as not configured (Amazon Ads). The rule is `mureo.core.runtime_context.runtime_account_env_fallback_allowed()`, the negation of `runtime_multi_account_auth()`, and it also applies when `load_amazon_ads_credentials` is called with an explicit `path`, as the configure UI does. Single-account installs are unchanged.
+
 ## [0.45.0] - 2026-11-24
 
 ### Added

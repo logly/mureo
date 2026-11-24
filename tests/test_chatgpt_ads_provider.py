@@ -49,6 +49,7 @@ from mureo.web.plugin_credentials import (
     list_plugin_credential_fields,
     save_plugin_credentials,
 )
+from tests._runtime_context_fakes import MultiAccountStore, install_runtime_store
 from tests.test_amazon_provider_registration import _isolated_registry  # noqa: F401
 
 if TYPE_CHECKING:
@@ -243,6 +244,56 @@ class TestCredentials:
         monkeypatch.delenv("CHATGPT_ADS_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "image-key")
         assert load_chatgpt_ads_credentials() is None
+
+
+class TestEnvironmentFallbackPerBackend:
+    """``CHATGPT_ADS_API_KEY`` names one ad account (#1057)."""
+
+    @staticmethod
+    def _single_account_store(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> FilesystemSecretStore:
+        """No factory registered (the root conftest hides installed ones)."""
+        store = FilesystemSecretStore(path=tmp_path / "store.json")
+        monkeypatch.setattr(
+            credentials_module,
+            "get_runtime_context",
+            lambda: SimpleNamespace(secret_store=store),
+        )
+        return store
+
+    def test_env_key_is_used_without_a_factory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._single_account_store(monkeypatch, tmp_path)
+        monkeypatch.setenv("CHATGPT_ADS_API_KEY", "from-env")
+        loaded = load_chatgpt_ads_credentials()
+        assert loaded is not None and loaded.api_key == "from-env"
+
+    def test_env_key_is_not_read_for_a_multi_account_store(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install_runtime_store(monkeypatch, MultiAccountStore({}))
+        monkeypatch.setenv("CHATGPT_ADS_API_KEY", "another-account")
+        assert load_chatgpt_ads_credentials() is None
+
+    def test_the_store_section_is_used_without_a_factory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = self._single_account_store(monkeypatch, tmp_path)
+        store.save("chatgpt_ads", {"api_key": "from-store"})
+        monkeypatch.setenv("CHATGPT_ADS_API_KEY", "from-env")
+        loaded = load_chatgpt_ads_credentials()
+        assert loaded is not None and loaded.api_key == "from-store"
+
+    def test_the_store_section_is_used_for_a_multi_account_store(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = MultiAccountStore({"chatgpt_ads": {"api_key": "from-store"}})
+        install_runtime_store(monkeypatch, store)
+        monkeypatch.setenv("CHATGPT_ADS_API_KEY", "from-env")
+        loaded = load_chatgpt_ads_credentials()
+        assert loaded is not None and loaded.api_key == "from-store"
 
 
 class TestPlatformModel:

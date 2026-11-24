@@ -78,6 +78,11 @@ it needs no MCP server restart.
 
 A blank or whitespace-only value counts as absent in both places.
 
+A multi-account backend (a credential store declaring `multi_account_auth`)
+never reads the variable: it names one ad account, and every account that
+backend serves shares one process environment, so an account without its own
+key gets `no_credentials` instead of another account's key.
+
 ### Switching the provider off
 
 The provider is registered by default. Set `MUREO_DISABLE_CHATGPT_ADS=1` (the
@@ -845,7 +850,7 @@ click count to get CPC; use the returned `cpc`.
 
 | Situation | Result |
 |-----------|--------|
-| No key stored and `CHATGPT_ADS_API_KEY` unset | `{"status": "auth_error", "auth_cause": "no_credentials", "detail": ...}`; the detail names the ChatGPT Ads card of `mureo configure` and `CHATGPT_ADS_API_KEY` |
+| No key stored, and `CHATGPT_ADS_API_KEY` unset or not read (multi-account backend) | `{"status": "auth_error", "auth_cause": "no_credentials", "detail": ...}`; the detail names `mureo configure` (the ChatGPT Ads card, or the account's own credential form on a multi-account backend) and, for a single-account install, `CHATGPT_ADS_API_KEY` |
 | 401, or a 403 that is not a feature gate | `{"status": "auth_error", "auth_cause": "token_invalid", "detail": "ChatGPT Ads rejected the API key: ..."}` |
 | 403 or 404 whose error code ends in `_disabled` or `_not_enabled`, or whose message says `is not enabled` / `not enabled for` | `{"status": "error", "error": "feature_not_enabled", "detail": ...}`: the feature is not enabled for this ad account |
 | Any other error answer (400, a plain 404, 409, 413, 422, 5xx, 429 after retries) | text `API error: HTTP <status> (<code>): <message>`; `(<code>)` only when the body carries a well-formed code, and `no readable error detail in the response body` in place of the message when the body is not a JSON object or names none |

@@ -18,6 +18,7 @@ from mureo.chatgpt_ads import _period, handlers
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
 from mureo.core.tool_failure import failure_of
 from tests._chatgpt_ads_fakes import SENTINEL_KEY, FakeAPI, page, rows
+from tests._runtime_context_fakes import MultiAccountStore, install_runtime_store
 
 pytestmark = pytest.mark.unit
 
@@ -371,6 +372,16 @@ class TestFailures:
         assert (failure.status, failure.code) == ("auth_error", "no_credentials")
         assert "CHATGPT_ADS_API_KEY" in failure.detail
         assert "mureo configure" in failure.detail
+        assert api.requests == []
+
+    async def test_multi_account_store_without_a_section_ignores_the_env_key(
+        self, api: FakeAPI, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The environment names one account; another account of a
+        multi-account backend must not reach it (#1057)."""
+        install_runtime_store(monkeypatch, MultiAccountStore({}))
+        failure = await _fail("chatgpt_ads_account_get")
+        assert (failure.status, failure.code) == ("auth_error", "no_credentials")
         assert api.requests == []
 
     async def test_401_is_token_invalid(self, api: FakeAPI) -> None:
