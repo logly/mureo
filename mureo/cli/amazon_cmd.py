@@ -114,8 +114,8 @@ def _ensure_access_token(creds: AmazonAdsCredentials) -> AmazonAdsCredentials:
             "no amazon_ads access_token is stored, and there is no "
             "refresh_token + client_secret pair to mint one from. Add them "
             "(or paste an access_token) in the configure UI's Amazon Ads "
-            "card, via the AMAZON_ADS_* env vars, or in "
-            "~/.mureo/credentials.json — see docs/amazon-ads.md.",
+            "card, via the AMAZON_ADS_* env vars (single-account installs "
+            "only), or in ~/.mureo/credentials.json — see docs/amazon-ads.md.",
             err=True,
         )
         raise typer.Exit(1)

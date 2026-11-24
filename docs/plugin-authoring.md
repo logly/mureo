@@ -3802,7 +3802,7 @@ idempotent. Keys are platform names (`"google_ads"`, `"meta_ads"`, …).
 | Attribute | Type | Resolver (`mureo.core.runtime_context`) | Consulted by |
 |---|---|---|---|
 | `credentials_write_path` | `Path` | `runtime_credentials_path` | Configure-UI credential writers (#196) |
-| `multi_account_auth` | `bool` | `runtime_multi_account_auth` | `mureo configure` OAuth flow (#198) |
+| `multi_account_auth` | `bool` | `runtime_multi_account_auth`, `runtime_account_env_fallback_allowed` | `mureo configure` OAuth flow (#198); ChatGPT Ads and Amazon Ads credential loaders (#1057) |
 | `ui_plugin_credential_fields` | `Mapping[str, Collection[str]]` | `runtime_ui_plugin_credential_fields` | Dashboard "Connection credentials" section (#207) |
 | `search_console_sites` | `Collection[str]` | `runtime_search_console_sites` | Search Console MCP handlers (#375) |
 | `meta_account_ids` | `Collection[str]` | `runtime_meta_account_ids` | Meta Ads MCP handlers (#411) |
@@ -3850,6 +3850,17 @@ The value is honoured **only when it is exactly `True`** — `"yes"`,
 store must not silently suppress the picker. Note that this flag also
 flips the account allow-lists into fail-closed mode (below) — the two
 capabilities are designed as a pair.
+
+The flag also turns off the environment-variable fallback of the
+ChatGPT Ads (`CHATGPT_ADS_API_KEY`) and Amazon Ads (`AMAZON_ADS_*`)
+credential loaders, resolved by
+`runtime_account_env_fallback_allowed()` (the negation of
+`runtime_multi_account_auth()`). Those variables name one ad account,
+and every account your backend serves shares one process environment,
+so an account without its own section must not read another account's
+credentials (#1057): ChatGPT Ads then fails with `no_credentials`, and
+Amazon Ads reports the platform as not configured. Store the section per
+account instead.
 
 #### `ui_plugin_credential_fields` — scoping the dashboard credential form
 

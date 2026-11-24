@@ -355,6 +355,27 @@ def runtime_multi_account_auth() -> bool:
     return getattr(store, "multi_account_auth", False) is True
 
 
+def runtime_account_env_fallback_allowed() -> bool:
+    """Return whether credential loaders may fall back to account-bound
+    environment variables when the active ``SecretStore`` has no section.
+
+    Variables such as ``CHATGPT_ADS_API_KEY`` or ``AMAZON_ADS_*`` name one
+    ad account. A multi-account backend (see
+    :func:`runtime_multi_account_auth`) serves many accounts from one
+    process, and that process has one environment, so an account without
+    its own section would otherwise read another account's credentials
+    instead of failing with ``no_credentials`` (#1057).
+
+    Resolution is the negation of :func:`runtime_multi_account_auth`, so it
+    inherits that function's rules: no factory registered → ``True``
+    (single-account installs keep the fallback); a store declaring
+    ``multi_account_auth`` exactly ``True`` → ``False``; anything else →
+    ``True``. A registered-but-broken factory surfaces its
+    :class:`RuntimeContextFactoryError` here too.
+    """
+    return not runtime_multi_account_auth()
+
+
 def runtime_ui_plugin_credential_fields() -> dict[str, frozenset[str]] | None:
     """Return a per-provider allow-list of credential-field keys the
     dashboard "Connection credentials" section should render, or ``None``.

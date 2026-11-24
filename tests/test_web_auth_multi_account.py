@@ -35,9 +35,11 @@ from mureo.core.ga4_adc import managed_adc_path
 from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
+    runtime_account_env_fallback_allowed,
     runtime_multi_account_auth,
 )
 from mureo.web.auth_wizard import WebAuthWizard
+from tests._runtime_context_fakes import MultiAccountStore, install_runtime_store
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -142,6 +144,37 @@ def test_runtime_multi_account_auth_non_true_value_is_false(
     ctx = dataclasses.replace(default_runtime_context(), secret_store=_Store())
     _patch_eps(monkeypatch, [_FakeEP("x", lambda: ctx)])
     assert runtime_multi_account_auth() is False
+
+
+# ---------------------------------------------------------------------------
+# runtime_account_env_fallback_allowed helper (#1057)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_account_env_fallback_allowed_when_no_factory() -> None:
+    """The root conftest hides installed factories: a single-account install."""
+    assert runtime_account_env_fallback_allowed() is True
+
+
+@pytest.mark.unit
+def test_account_env_fallback_refused_for_a_multi_account_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One process environment serves every account of a multi-account
+    backend, so account-bound variables must not be read."""
+    install_runtime_store(monkeypatch, MultiAccountStore())
+    assert runtime_account_env_fallback_allowed() is False
+
+
+@pytest.mark.unit
+def test_account_env_fallback_allowed_for_a_non_true_declaration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same strictness as ``runtime_multi_account_auth``: only exactly
+    ``True`` marks a multi-account backend."""
+    install_runtime_store(monkeypatch, MultiAccountStore(multi_account_auth="yes"))
+    assert runtime_account_env_fallback_allowed() is True
 
 
 # ---------------------------------------------------------------------------

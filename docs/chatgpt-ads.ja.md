@@ -81,6 +81,12 @@ mureo configure
 
 空の値と空白だけの値は、どちらの置き場所でも未設定として扱います。
 
+複数アカウント対応のバックエンド（`multi_account_auth` を宣言する認証情報の
+保存先）では、この変数を読み込みません。変数が指すのは 1 つの広告アカウント
+ですが、そのバックエンドが扱うすべてのアカウントが 1 つのプロセス環境を共有
+するためです。自分のキーが無いアカウントは、別のアカウントのキーを使わずに
+`no_credentials` になります。
+
 ### プロバイダを無効にする
 
 プロバイダは既定で登録されます。MCP サーバーまたは `mureo configure` を
@@ -855,7 +861,7 @@ API のレポートの文書より:
 
 | 状況 | 結果 |
 |-----------|--------|
-| キーが保存されておらず、`CHATGPT_ADS_API_KEY` も未設定 | `{"status": "auth_error", "auth_cause": "no_credentials", "detail": ...}`。detail は `mureo configure` の ChatGPT Ads のカードと `CHATGPT_ADS_API_KEY` を示す |
+| キーが保存されておらず、`CHATGPT_ADS_API_KEY` も未設定（または複数アカウント対応のバックエンドで読み込まれない） | `{"status": "auth_error", "auth_cause": "no_credentials", "detail": ...}`。detail は `mureo configure`（ChatGPT Ads のカード、または複数アカウント対応のバックエンドではそのアカウント用の認証情報フォーム）と、単一アカウントのインストールでは `CHATGPT_ADS_API_KEY` を示す |
 | 401、または機能の有効化によるものではない 403 | `{"status": "auth_error", "auth_cause": "token_invalid", "detail": "ChatGPT Ads rejected the API key: ..."}` |
 | エラーコードが `_disabled` か `_not_enabled` で終わる、またはメッセージに `is not enabled` / `not enabled for` を含む 403 か 404 | `{"status": "error", "error": "feature_not_enabled", "detail": ...}`: この広告アカウントではその機能が有効になっていない |
 | その他のエラー応答（400、通常の 404、409、413、422、5xx、再試行後の 429） | 文 `API error: HTTP <status> (<code>): <message>`。`(<code>)` は本文が正しい形のコードを持つときだけ。本文が JSON オブジェクトでないかメッセージを持たない場合は、メッセージの代わりに `no readable error detail in the response body` |

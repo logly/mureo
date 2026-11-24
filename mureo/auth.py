@@ -1,7 +1,6 @@
 """Credential loading module
 
-Load Google Ads / Meta Ads credentials from ~/.mureo/credentials.json.
-Falls back to environment variables if the file does not exist.
+Load platform credentials from the active SecretStore, with env fallback.
 
 Platform SDKs are imported lazily, inside the ``create_*_client``
 factories (#486). This module sits on the CLI startup path — ``mureo.cli.main``
@@ -28,7 +27,11 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 
 from mureo.core.atomic_json import atomic_write_json, load_existing_json
-from mureo.core.runtime_context import get_runtime_context, runtime_credentials_path
+from mureo.core.runtime_context import (
+    get_runtime_context,
+    runtime_account_env_fallback_allowed,
+    runtime_credentials_path,
+)
 from mureo.core.secret_store import (
     FilesystemSecretStore,
     SecretStore,
@@ -312,10 +315,12 @@ def load_amazon_ads_credentials(
 
     Priority:
         1. ``amazon_ads`` section from the resolved
-           :class:`mureo.core.secret_store.SecretStore` (see
-           :func:`load_google_ads_credentials` for the full resolution
-           rules — same shape).
-        2. Environment variables (``AMAZON_ADS_*``, #121).
+           :class:`mureo.core.secret_store.SecretStore` (resolved as in
+           :func:`load_google_ads_credentials`).
+        2. Environment variables (``AMAZON_ADS_*``, #121), unless
+           :func:`runtime_account_env_fallback_allowed` refuses them (#1057),
+           even with an explicit ``path``; so a registered-but-broken runtime
+           factory raises ``RuntimeContextFactoryError`` from this step.
 
     ``client_id`` is required, plus token material: EITHER a stored
     ``access_token`` OR the ``refresh_token`` + ``client_secret`` pair
@@ -323,16 +328,14 @@ def load_amazon_ads_credentials(
     / ``account_mode`` falls back to the safe defaults (``na`` /
     ``dynamic``) rather than failing the load.
 
-    Returns:
-        AmazonAdsCredentials, or None when neither source supplies a
-        usable combination.
+    Returns ``None`` when no allowed source supplies a usable combination.
     """
     section = _resolve_secret_store(path).load("amazon_ads")
     credentials = _amazon_ads_from_mapping(section)
     if credentials is not None:
         return credentials
-
-    # Environment variable fallback
+    if not runtime_account_env_fallback_allowed():
+        return None
     return _load_amazon_ads_from_env()
 
 
@@ -342,10 +345,9 @@ def _amazon_ads_from_mapping(section: dict[str, Any]) -> AmazonAdsCredentials | 
     Shared by the file/secret-store path and the env-var path so the
     "what counts as usable" rule has exactly one definition.
 
-    Keys outside that rule are ignored, notably
-    ``refresh_token_obtained_at`` (#121): it is re-authorization
-    *metadata* read by the status collector, not credential material the
-    bridge needs, so it stays off the frozen credentials dataclass.
+    Keys outside that rule are ignored, notably ``refresh_token_obtained_at``
+    (#121): it is re-authorization *metadata* read by the status collector, not
+    credential material the bridge needs, so it stays off the dataclass.
     """
     client_id = section.get("client_id") or ""
     access_token = section.get("access_token") or ""
@@ -355,7 +357,6 @@ def _amazon_ads_from_mapping(section: dict[str, Any]) -> AmazonAdsCredentials | 
         return None
     if not (access_token or (refresh_token and client_secret)):
         return None
-
     return AmazonAdsCredentials(
         client_id=client_id,
         access_token=access_token,
@@ -376,8 +377,7 @@ def _amazon_region(value: object) -> str:
 
 
 def _amazon_account_mode(value: object) -> str:
-    """Normalize an account mode to ``dynamic`` / ``fixed`` (default
-    ``dynamic``)."""
+    """Normalize an account mode to ``dynamic`` / ``fixed`` (default dynamic)."""
     mode = str(value if value is not None else "dynamic").strip().lower()
     return mode if mode in _AMAZON_ACCOUNT_MODES else "dynamic"
 

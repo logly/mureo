@@ -25,10 +25,16 @@ from mureo.auth import (
     save_amazon_access_token,
 )
 from mureo.core.runtime_context import (
+    RuntimeContextFactoryError,
     default_runtime_context,
     reset_runtime_context,
 )
 from mureo.providers.config_writer import ConfigWriteError
+from tests._runtime_context_fakes import (
+    MultiAccountStore,
+    install_runtime_factory,
+    install_runtime_store,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -549,3 +555,94 @@ class TestSaveAmazonAccessTokenFollowsRuntimeContext:
         assert json.loads(cf.read_text())["amazon_ads"]["access_token"] == "Atza|NEW"
         assert not tenant.exists()
         assert not legacy.exists()
+
+
+# ---------------------------------------------------------------------------
+# #1057 — the AMAZON_ADS_* variables name one ad account, so a runtime store
+# that is a multi-account backend never falls back to them: one process
+# environment is shared by every account that backend serves.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_clean_amazon_env")
+class TestAmazonEnvFallbackPerBackend:
+    """No factory is registered unless a test installs one: the root conftest
+    hides installed factories and drops the cached context around each test."""
+
+    @staticmethod
+    def _set_env(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AMAZON_ADS_CLIENT_ID", "env-cid")
+        monkeypatch.setenv("AMAZON_ADS_ACCESS_TOKEN", "Atza|ENV")
+
+    def test_env_is_used_without_a_factory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "mureo.core.secret_store.default_credentials_path",
+            lambda: tmp_path / "absent.json",
+        )
+        self._set_env(monkeypatch)
+        c = load_amazon_ads_credentials()
+        assert c is not None and c.client_id == "env-cid"
+
+    def test_env_is_not_read_for_a_multi_account_store(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install_runtime_store(monkeypatch, MultiAccountStore({}))
+        self._set_env(monkeypatch)
+        assert load_amazon_ads_credentials() is None
+
+    def test_the_store_section_is_used_for_a_multi_account_store(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        section = {"client_id": "store-cid", "access_token": "Atza|STORE"}
+        install_runtime_store(monkeypatch, MultiAccountStore({"amazon_ads": section}))
+        self._set_env(monkeypatch)
+        c = load_amazon_ads_credentials()
+        assert c is not None and c.client_id == "store-cid"
+
+    def test_the_store_section_is_used_without_a_factory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cf = _write(
+            tmp_path,
+            {"amazon_ads": {"client_id": "file-cid", "access_token": "Atza|FILE"}},
+        )
+        monkeypatch.setattr(
+            "mureo.core.secret_store.default_credentials_path", lambda: cf
+        )
+        self._set_env(monkeypatch)
+        c = load_amazon_ads_credentials()
+        assert c is not None and c.client_id == "file-cid"
+
+    def test_an_explicit_path_does_not_reopen_the_env_fallback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The configure UI loads with an explicit ``path`` inside the same
+        multi-account process, so the environment stays closed there too."""
+        install_runtime_store(monkeypatch, MultiAccountStore({}))
+        self._set_env(monkeypatch)
+        assert load_amazon_ads_credentials(path=tmp_path / "absent.json") is None
+
+    def test_an_explicit_path_keeps_the_env_fallback_without_a_factory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._set_env(monkeypatch)
+        c = load_amazon_ads_credentials(path=tmp_path / "absent.json")
+        assert c is not None and c.client_id == "env-cid"
+
+    def test_a_broken_factory_surfaces_even_with_an_explicit_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Whether the environment may be read depends on the registered
+        store, so a factory that cannot build one fails the load instead of
+        being treated as a single-account install."""
+
+        def broken() -> object:
+            raise ValueError("plugin internals exploded")
+
+        install_runtime_factory(monkeypatch, broken)
+        self._set_env(monkeypatch)
+        with pytest.raises(RuntimeContextFactoryError):
+            load_amazon_ads_credentials(path=tmp_path / "absent.json")

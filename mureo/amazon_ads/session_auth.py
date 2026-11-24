@@ -168,7 +168,8 @@ class SessionCredentials:
             raise AmazonBridgeError(
                 "amazon_ads credentials not configured in "
                 "~/.mureo/credentials.json (run `mureo configure` and fill "
-                "in the Amazon Ads card, or set the AMAZON_ADS_* env vars)"
+                "in the Amazon Ads card, or, on a single-account install, "
+                "set the AMAZON_ADS_* env vars)"
             )
         if creds.access_token:
             return creds, False

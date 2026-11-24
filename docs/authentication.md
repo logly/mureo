@@ -130,6 +130,8 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 
 "Conditional" means the client ID plus **either** `AMAZON_ADS_ACCESS_TOKEN` **or both** of `AMAZON_ADS_REFRESH_TOKEN` and `AMAZON_ADS_CLIENT_SECRET`. See [amazon-ads.md](amazon-ads.md).
 
+A multi-account backend (a credential store declaring `multi_account_auth`) does not read the `AMAZON_ADS_*` variables; see [amazon-ads.md](amazon-ads.md#3-alternative-environment-variables).
+
 ### ChatGPT Ads
 
 | Variable | Required | Description |
@@ -137,6 +139,8 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 | `CHATGPT_ADS_API_KEY` | Yes, when no key is stored | Advertiser API key for your own ad account, created on the Settings page in Ads Manager. One key reads one ad account |
 
 The stored form is the `chatgpt_ads` section of `~/.mureo/credentials.json` with one field, `api_key`, written by the **ChatGPT Ads** card of `mureo configure`. A blank value counts as absent. `OPENAI_API_KEY` is never read for ChatGPT Ads. See [chatgpt-ads.md](chatgpt-ads.md).
+
+A multi-account backend (a credential store declaring `multi_account_auth`) does not read `CHATGPT_ADS_API_KEY`; see [chatgpt-ads.md](chatgpt-ads.md#environment-variable).
 
 **Resolution order**: credentials.json takes priority. Environment variables are only checked if the corresponding section in credentials.json is missing or incomplete.
 
