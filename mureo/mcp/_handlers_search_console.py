@@ -24,6 +24,7 @@ from mureo.mcp._helpers import (
     api_error_handler,
     register_client_for_cleanup,
 )
+from mureo.mcp.serving_providers import served_pointer, with_pointer
 from mureo.throttle import SEARCH_CONSOLE_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,14 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
 
 
 def _no_sc_creds() -> list[TextContent]:
-    """Return a credentials-not-found error."""
-    return _no_creds_result(_NO_CREDS_MSG)
+    """Return a credentials-not-found error.
+
+    Names the plugin tool family Search Console is configured under in
+    this workspace, when there is one; otherwise the message is unchanged.
+    """
+    return _no_creds_result(
+        with_pointer(_NO_CREDS_MSG, served_pointer("search_console"))
+    )
 
 
 def _resolve_site_url(args: dict[str, Any]) -> str:

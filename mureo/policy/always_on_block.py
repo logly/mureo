@@ -17,16 +17,41 @@ them:
   the caller, because the heading otherwise reads as a complete list and "not
   listed" would mean both "has nothing to say" and "did not fit".
 
+* **Names are validated before they are rendered.** A line that quotes a
+  plugin-supplied name (a tool name, a tool prefix) renders it only when
+  :func:`is_renderable_name` accepts it: a name carrying a line break could
+  forge a heading or another entry, and a long one would carry free text past
+  the per-entry cap.
+
 Pure functions: nothing is logged here, so each caller keeps its own log
 message, and nothing passed in is modified.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+#: Longest name an always-on line renders.
+MAX_RENDERED_NAME_CHARS: Final = 128
+
+#: The name shape an always-on line renders: nothing that can end a line, open
+#: a ``name: text`` separator or hide in the rendered text.
+_RENDERABLE_NAME_PATTERN: Final = re.compile(
+    rf"[A-Za-z0-9_.-]{{1,{MAX_RENDERED_NAME_CHARS}}}"
+)
+
+
+def is_renderable_name(name: object) -> bool:
+    """Whether ``name`` may be quoted on an always-on line.
+
+    1 to :data:`MAX_RENDERED_NAME_CHARS` characters of ASCII letters, digits,
+    ``_``, ``.`` and ``-``. Anything else, a non-``str`` included, is refused.
+    """
+    return isinstance(name, str) and bool(_RENDERABLE_NAME_PATTERN.fullmatch(name))
 
 
 def is_single_line(text: str) -> bool:
@@ -95,4 +120,9 @@ def render_block(
     return "\n".join([heading, *lines, *([note] if note else [])]), dropped
 
 
-__all__ = ["is_single_line", "render_block"]
+__all__ = [
+    "MAX_RENDERED_NAME_CHARS",
+    "is_renderable_name",
+    "is_single_line",
+    "render_block",
+]

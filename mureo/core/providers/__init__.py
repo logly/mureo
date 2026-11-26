@@ -29,6 +29,7 @@ from mureo.core.providers.credentials import (
     AccountCredentialField,
     AccountOAuthConfig,
     get_serves_platform,
+    required_fields_stored,
 )
 from mureo.core.providers.extension import ExtensionProvider
 from mureo.core.providers.keyword import KeywordProvider
@@ -131,6 +132,7 @@ __all__ = [
     "parse_capabilities",
     "parse_capability",
     "register_provider_class",
+    "required_fields_stored",
     "validate_provider",
     "validate_provider_name",
 ]

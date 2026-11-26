@@ -26,6 +26,7 @@ from mureo.mcp._helpers import (
     _opt,
     register_client_for_cleanup,
 )
+from mureo.mcp.serving_providers import served_pointer, with_pointer
 
 _NO_CREDS_MSG = (
     "Credentials not found. Set environment variable "
@@ -59,8 +60,12 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
 
 
 def _no_meta_creds() -> list[TextContent]:
-    """Return a Meta Ads credentials-not-found error."""
-    return _no_creds_result(_NO_CREDS_MSG)
+    """Return a Meta Ads credentials-not-found error.
+
+    Names the plugin tool family Meta Ads is configured under in this
+    workspace, when there is one; otherwise the message is unchanged.
+    """
+    return _no_creds_result(with_pointer(_NO_CREDS_MSG, served_pointer("meta_ads")))
 
 
 def _entity_result(payload: Any) -> list[TextContent]:

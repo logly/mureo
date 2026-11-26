@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -286,9 +286,27 @@ def get_serves_platform(provider: object) -> str | None:
     return served
 
 
+def required_fields_stored(fields: Iterable[tuple[bool, bool]]) -> bool:
+    """Whether a provider counts as configured, from ``(required, stored)``
+    per declared field.
+
+    True when at least one field is required and every required field is
+    stored. A provider that declares no required field is never configured:
+    there is nothing to have been saved. The configure UI's provider card and
+    the MCP server's routing between a built-in platform and a provider that
+    serves it share this combination rule, while each reads its own store:
+    the card its fields after the configure UI's field scoping, the MCP
+    server the workspace's section as ``SecretStore.load`` returns it. So
+    the two agree on how answers combine, not necessarily on the answers.
+    """
+    required = [stored for is_required, stored in fields if is_required]
+    return bool(required) and all(required)
+
+
 __all__ = [
     "SERVED_PLATFORMS",
     "AccountCredentialField",
     "AccountOAuthConfig",
     "get_serves_platform",
+    "required_fields_stored",
 ]

@@ -22,6 +22,7 @@ from mcp.types import Tool
 from mureo.core.providers.registry import ProviderEntry
 from mureo.core.runtime_context import DEFAULT_WORKSPACE_ID
 from mureo.mcp import server as mcp_server
+from mureo.mcp import server_instructions
 from mureo.mcp._ops_history_param import inject_ops_params, ops_scope
 from mureo.mcp._reason_param import inject_reason_params, mutating_predicate
 from mureo.mcp.plugin_semantics import derive_semantics
@@ -385,7 +386,9 @@ def test_default_install_instructions_stay_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_workspace(monkeypatch, DEFAULT_WORKSPACE_ID)
-    assert mcp_server._tool_guidance_instruction() == ""
+    owners = mcp_server._plugin_tool_owners()
+    tools = mcp_server._ALL_TOOLS
+    assert server_instructions.tool_guidance_instruction(tools, owners) == ""
     assert mcp_server._server_instructions() is None
 
 

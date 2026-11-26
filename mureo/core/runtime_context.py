@@ -492,9 +492,7 @@ def runtime_search_console_sites() -> frozenset[str] | None:
     resolve/enforce ``site_url`` against this set — fail-closed for an
     out-of-set value, fail-fast when none is configured — mirroring how
     Google Ads binds ``customer_id`` from per-client config. Joins the
-    store-capability family of :func:`runtime_credentials_path` (#196),
-    :func:`runtime_multi_account_auth` (#198), and
-    :func:`runtime_ui_plugin_credential_fields` (#202).
+    store-capability family (#196, #198, #202).
 
     Resolution:
 
@@ -520,6 +518,13 @@ def runtime_search_console_sites() -> frozenset[str] | None:
       (not scoped). A single-account factory carries no shared-OAuth
       cross-client risk, so it keeps the unrestricted behavior; a usable
       allow-list still scopes it if one is declared.
+
+    Listed, with no credential source active: what the built-in connection
+    may reach, never an account only a serving plugin reaches; an empty set
+    makes the built-in tools refuse and name that plugin's family. Under
+    ``use_credential_source`` the handlers still check it in the source's
+    context, so while ``active_source_identity(platform)`` is set the backend
+    returns what that source may reach; a plugin's own client scopes itself.
     """
     return _runtime_account_allow_list("search_console_sites")
 
@@ -536,6 +541,13 @@ def runtime_meta_account_ids() -> frozenset[str] | None:
     enforces the effective id against it — fail-closed when a multi-account
     backend declares nothing. Entries may be ``act_``-prefixed or bare
     numeric; the handler compares prefix-insensitively.
+
+    Listed, with no credential source active: what the built-in connection
+    may reach, never an account only a serving plugin reaches; an empty set
+    makes the built-in tools refuse and name that plugin's family. Under
+    ``use_credential_source`` the handlers still check it in the source's
+    context, so while ``active_source_identity(platform)`` is set the backend
+    returns what that source may reach; a plugin's own client scopes itself.
     """
     return _runtime_account_allow_list("meta_account_ids")
 
@@ -547,6 +559,13 @@ def runtime_google_ads_customer_ids() -> frozenset[str] | None:
     Same shape and rationale as :func:`runtime_search_console_sites`; the
     store attribute is ``google_ads_customer_ids``. Entries may carry
     hyphens or not; the handler compares hyphen-insensitively.
+
+    Listed, with no credential source active: what the built-in connection
+    may reach, never an account only a serving plugin reaches; an empty set
+    makes the built-in tools refuse and name that plugin's family. Under
+    ``use_credential_source`` the handlers still check it in the source's
+    context, so while ``active_source_identity(platform)`` is set the backend
+    returns what that source may reach; a plugin's own client scopes itself.
     """
     return _runtime_account_allow_list("google_ads_customer_ids")
 

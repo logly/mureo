@@ -23,7 +23,7 @@ from mureo.core.knowledge_store import FilesystemKnowledgeStore
 from mureo.core.runtime_context import RuntimeContextFactoryError, get_runtime_context
 from mureo.learning.insight_sources import default_config_path
 from mureo.mcp import server as mcp_server
-from mureo.mcp import tools_learning
+from mureo.mcp import server_instructions, tools_learning
 from mureo.mcp.knowledge_instructions import (
     ADVISORS_TOOL_NAME,
     INSIGHTS_TOOL_NAME,
@@ -320,7 +320,9 @@ def test_knowledge_section_comes_after_the_tool_notes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     notes = "Tool notes — stand-in block"
-    monkeypatch.setattr(mcp_server, "_tool_guidance_instruction", lambda: notes)
+    monkeypatch.setattr(
+        server_instructions, "tool_guidance_instruction", lambda *_: notes
+    )
     _save_insight()
     text = mcp_server._server_instructions()
     assert text is not None
@@ -337,5 +339,5 @@ def test_factory_error_omits_the_knowledge_section(
 
     monkeypatch.setattr(tools_learning, "get_runtime_context", _boom)
     _write_sources(_VALID_SOURCE)
-    assert mcp_server._knowledge_instruction() == ""
+    assert server_instructions.knowledge_instruction() == ""
     assert mcp_server._server_instructions() is None
