@@ -103,8 +103,9 @@ logger = logging.getLogger(__name__)
 
 #: Longest one platform's statement may be. The only always-on string mureo
 #: ships today — the workspace-routing sentence in
-#: ``mureo.mcp.server._workspace_instruction`` — is 328 characters, so a
-#: platform gets at most one such sentence's worth to say what it is. Enough
+#: ``mureo.mcp.server_instructions.workspace_instruction`` — is 328
+#: characters, so a platform gets at most one such sentence's worth to say
+#: what it is. Enough
 #: for "how delivery is selected and priced, and what therefore does not
 #: exist"; not enough for a manual.
 MAX_STATEMENT_CHARS = 400

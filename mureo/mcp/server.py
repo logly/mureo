@@ -68,8 +68,13 @@ from mureo.core.providers import registry as _registry
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.core.throttle_store import ProcessLocalThrottleStore
 from mureo.mcp import _server_slots
-from mureo.mcp._helpers import exception_text, is_error_result
-from mureo.mcp._journal_hook import capture_client_info, journal_call, take_rationale
+from mureo.mcp._helpers import exception_text, failure_of, is_error_result
+from mureo.mcp._journal_hook import (
+    capture_client_info,
+    journal_call,
+    take_rationale,
+    tool_family,
+)
 from mureo.mcp._ops_history_param import (
     enforce_ops_call,
     inject_ops_params,
@@ -84,7 +89,11 @@ from mureo.mcp._plugin_declarations import (
     _register_plugin_pattern_fallbacks,
     _register_plugin_read_only_hints,
 )
-from mureo.mcp._plugin_tables import _PLUGIN_DISPATCH, _PLUGIN_SEMANTICS
+from mureo.mcp._plugin_tables import (
+    _PLUGIN_DISPATCH,
+    _PLUGIN_SEMANTICS,
+    _SERVING_PROVIDERS,
+)
 from mureo.mcp._reason_param import inject_reason_params, mutating_predicate
 from mureo.mcp._result_decorations import (
     _capture_plugin_reversal,
@@ -104,14 +113,14 @@ from mureo.mcp.exclusion_preflight import (
 from mureo.mcp.exclusion_preflight import (
     refusal_content as exclusion_refusal_content,
 )
-from mureo.mcp.knowledge_instructions import knowledge_instructions
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
 from mureo.mcp.plugin_semantics import (
     derive_semantics,
     record_mutation_action_log,
 )
-from mureo.mcp.tool_guidance import tool_guidance_instructions
+from mureo.mcp.server_instructions import server_instructions
+from mureo.mcp.serving_providers import builtin_refusal, serving_providers
 from mureo.mcp.tool_provider import (
     collect_plugin_tools,
     plugin_provider_name,
@@ -137,7 +146,6 @@ from mureo.mcp.tools_creative_studio import (
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_learning import TOOLS as LEARNING_TOOLS
-from mureo.mcp.tools_learning import advisors_configured, saved_insights_present
 from mureo.mcp.tools_learning import handle_tool as handle_learning_tool
 from mureo.mcp.tools_learning_preflight import TOOLS as LEARNING_PREFLIGHT_TOOLS
 from mureo.mcp.tools_learning_preflight import (
@@ -152,7 +160,6 @@ from mureo.mcp.tools_rollback import handle_tool as handle_rollback_tool
 from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
 from mureo.mcp.tools_search_console import handle_tool as handle_search_console_tool
 from mureo.policy.learning_reset import set_builtin_platform_tool_names
-from mureo.policy.platform_model import platform_model_instructions
 from mureo.policy.strategy_gate import StrategyPolicyGate
 from mureo.rollback.executor import is_rollback_dispatch_active
 from mureo.rollback.planner import set_plugin_reversal_keys
@@ -813,6 +820,9 @@ async def _gated_dispatch(
         call.invalid_args(exc)
         raise
     enforce_ops_call(call, name, reason, ops, handler_args, _OPS_TOOLS)
+    refusal = _builtin_refusal(name, call)
+    if refusal is not None:
+        return refusal
     # #547: size a bulk exclusion / block / negative-keyword batch against the
     # account's own recent delivery before it is applied. Runs here rather than
     # in a PolicyGate because it needs one AWAITED platform read and the gate
@@ -832,6 +842,19 @@ async def _gated_dispatch(
             call.completed(await _dispatch_tool(name, handler_args)), preflight
         )
     return _append_result_notices(name, handler_args, result)
+
+
+def _builtin_refusal(name: str, call: JournalledCall) -> list[Any] | None:
+    """A built-in tool's refusal when a serving plugin holds the account.
+
+    Journaled as ``refused``, like the exclusion preflight's refusal: the
+    call was stopped before any handler, not answered by the platform.
+    """
+    refusal = builtin_refusal(name, tool_family(name))
+    if refusal is not None:
+        failure = failure_of(refusal)
+        call.refused(failure.detail if failure is not None else "")
+    return refusal
 
 
 def _append_result_notices(
@@ -1039,107 +1062,14 @@ def _tool_families_view() -> tuple[tuple[frozenset[str], str], ...]:
 # ---------------------------------------------------------------------------
 
 
-def _workspace_instruction() -> str:
-    """Server-level instructions that name the workspace this server is bound to.
-
-    Some hosts expose *every* configured MCP server to *every* conversation at
-    once, with no way to scope a conversation to one of them. When more than one
-    mureo server is configured (one per workspace), the model has no signal about
-    which workspace a given server is bound to and can route a tool call to the
-    wrong one. Single-process, cwd-scoped hosts (e.g. Claude Code) are unaffected.
-
-    Naming the bound workspace in the server's ``instructions`` (part of the MCP
-    ``InitializeResult`` the client shows the model) gives the model the signal it
-    needs to pick the right server and to notice a mismatch instead of proceeding.
-
-    Returns ``""`` for the default single-workspace install — see
-    :func:`_server_instructions` for why that matters.
-    """
-    try:
-        workspace_id = runtime_context.get_runtime_context().workspace_id
-    except runtime_context.RuntimeContextFactoryError:
-        # A misconfigured factory is a real error, but it must surface where it
-        # already does (first tool call), not by refusing to start the server.
-        # Omit instructions and let startup proceed unchanged.
-        return ""
-    if workspace_id == runtime_context.DEFAULT_WORKSPACE_ID:
-        return ""
-    return (
-        f"This mureo server is bound to workspace {workspace_id!r}. Every tool "
-        f"here reads and writes ONLY that workspace's data. If the user is "
-        f"working on a different client/workspace, do NOT use this server — use "
-        f"the mureo server bound to that workspace instead. Never assume a tool "
-        f"call here acts on any workspace other than {workspace_id!r}."
-    )
-
-
-def _platform_model_instruction() -> str:
-    """The registered platform delivery models this server actually serves (#648).
-
-    ``instructions`` is the only always-on prose slot an MCP server has: the
-    client receives it inside the ``initialize`` response, before any tool
-    call, and it does not depend on a description matching. That is precisely
-    what a contributed ``SKILL.md`` cannot offer — it is description-matched
-    and read on demand, so a plugin's account of how its platform really works
-    was never read on the routine reporting paths where a borrowed mental
-    model does its damage.
-
-    Scoped to what this server serves and to who contributed it, so a platform
-    this server does not serve (uninstalled, or switched off by
-    ``MUREO_DISABLE_*``) contributes nothing, and no plugin can publish text
-    under another platform's name. Returns ``""`` when no in-scope platform has
-    registered a model — which is every install with no such plugin, mureo core
-    shipping none of its own.
-    """
-    return platform_model_instructions(_plugin_tool_owners())
-
-
-def _tool_guidance_instruction() -> str:
-    """The served plugin tools' own notes on when to consider them."""
-    return tool_guidance_instructions(_ALL_TOOLS, _plugin_tool_owners())
-
-
-def _knowledge_instruction() -> str:
-    """Saved-knowledge block, fixed at ``initialize``: new knowledge shows next session."""
-    try:
-        has_insights = saved_insights_present()
-    except runtime_context.RuntimeContextFactoryError:  # as _workspace_instruction
-        return ""
-    advisors = advisors_configured()
-    return knowledge_instructions(has_insights=has_insights, has_advisors=advisors)
-
-
 def _plugin_tool_owners() -> dict[str, str]:
     """:func:`~mureo.mcp.tool_provider.served_tool_owners` for this server."""
     return served_tool_owners(_ALL_TOOLS, _PLUGIN_DISPATCH)
 
 
 def _server_instructions() -> str | None:
-    """Compose the server's MCP ``instructions``, or ``None`` if there is none.
-
-    Four contributions, in this order — the bound-workspace notice, the
-    platform delivery models (#648), the plugin tool notes and the saved
-    knowledge — joined by a blank line, each only when non-empty.
-
-    Returns ``None`` when all are empty, which is the default single-workspace
-    install with no platform model, tool note, insight or advisor source: its
-    ``InitializeResult`` stays byte-identical, so standalone OSS users see no
-    change. A multi-workspace install with none of the others gets exactly the
-    workspace string it got before.
-    """
-    sections = [
-        section
-        for section in (
-            _workspace_instruction(),
-            _platform_model_instruction(),
-            _tool_guidance_instruction(),
-            _knowledge_instruction(),
-        )
-        if section
-    ]
-    if not sections:
-        return None
-    return "\n\n".join(sections)
+    """:func:`~mureo.mcp.server_instructions.server_instructions` for this server."""
+    return server_instructions(_ALL_TOOLS, _plugin_tool_owners())
 
 
 def _create_server() -> Server:
@@ -1170,6 +1100,17 @@ async def main() -> None:
             server.create_initialization_options(),
         )
 
+
+# Which plugins serve a built-in platform this run serves, under which prefix
+# (mureo.mcp.serving_providers). Refilled in place like ``_PLUGIN_DISPATCH``.
+_serving = serving_providers(
+    _plugin_tool_owners(),
+    _PLUGIN_DISPATCH,
+    {family: names for names, family in _tool_families_view() if names},
+)
+_SERVING_PROVIDERS.clear()
+_SERVING_PROVIDERS.update(_serving)
+del _serving
 
 # Published for the hook modules below this one (#879): they import
 # :mod:`mureo.mcp._server_slots` at top level instead of this module. Last, so

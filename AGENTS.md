@@ -122,7 +122,10 @@ mureo/
 │   │                                      #   hash chain across files, and verify_chain. A truncated
 │   │                                      #   TAIL is the one thing it cannot prove — say so, always
 │   ├── _journal_hook.py                   # Dispatcher hook: family/mutating classification, one record per call (#758)
-│   ├── _plugin_tables.py                  # Plugin dispatch / semantics dict objects, below server; server fills them in place at load (#879)
+│   ├── _plugin_tables.py                  # Plugin dispatch / semantics / serving-provider dict objects, below server; server fills them in place at load (#879)
+│   ├── server_instructions.py             # Assembles the MCP server's `instructions` sections in order; never imports server
+│   ├── serving_providers.py               # Plugins serving a built-in platform under their own tool prefix: the Platform tool families
+│   │                                      #   block, the built-in refusal and the pointer on the built-in no-credentials messages
 │   ├── _server_slots.py                   # Family view / dispatcher / policy evaluator slots, below server; server publishes them at load for the journal, auto-evaluation and rollback hooks (#879)
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules

@@ -313,9 +313,13 @@ mureo/
 │   ├── __main__.py                        # python -m mureo.mcp entry point
 │   ├── server.py                          # MCP server setup (stdio transport)
 │   ├── tool_checks.py                     # writes_to_platform / check_tool_call: dispatch's own classification and caller-error checks, for a stored call (#983, #984)
-│   ├── _plugin_tables.py                  # _PLUGIN_DISPATCH / _PLUGIN_SEMANTICS dict objects, below server so
-│   │                                      #   the journal hook imports them at top level; server fills
-│   │                                      #   them in place at load (and on reload) (#879)
+│   ├── server_instructions.py             # Assembles the MCP `instructions` sections in order; never imports server
+│   ├── serving_providers.py               # Plugins serving a built-in platform under their own tool prefix:
+│   │                                      #   the Platform tool families block, the built-in refusal and the
+│   │                                      #   pointer appended to the built-in no-credentials messages
+│   ├── _plugin_tables.py                  # _PLUGIN_DISPATCH / _PLUGIN_SEMANTICS / _SERVING_PROVIDERS dict objects,
+│   │                                      #   below server so the journal hook and serving_providers import them
+│   │                                      #   at top level; server fills them in place at load (and on reload) (#879)
 │   ├── _server_slots.py                   # tool_families / dispatcher / policy_evaluator slots, below server so the
 │   │                                      #   journal, auto-evaluation and rollback hooks import them at top level;
 │   │                                      #   server publishes them at the end of its load (and on reload) (#879)

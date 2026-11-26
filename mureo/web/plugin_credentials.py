@@ -45,6 +45,7 @@ from mureo.core.providers import (
     get_oauth_account_lister,
     get_oauth_persist_hook,
     get_serves_platform,
+    required_fields_stored,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 from mureo.web._helpers import run_best_effort_hook, run_coroutine
@@ -253,10 +254,16 @@ def plugin_is_configured(plugin: Mapping[str, Any]) -> bool:
     The same rule the card's per-field marks add up to: a provider whose
     required fields (after field scoping) are all ``configured`` has
     everything it declared it needs. A descriptor with no required field is
-    never "configured" — there is nothing to have been saved.
+    never "configured" — there is nothing to have been saved. The
+    combination rule is :func:`mureo.core.providers.required_fields_stored`,
+    which the MCP server's platform routing shares; the server applies it
+    to the workspace's section as ``SecretStore.load`` returns it, without
+    this card's field scoping.
     """
-    required = [f for f in plugin.get("fields", []) if f.get("required")]
-    return bool(required) and all(f.get("configured") for f in required)
+    return required_fields_stored(
+        (bool(f.get("required")), bool(f.get("configured")))
+        for f in plugin.get("fields", [])
+    )
 
 
 def plugin_platform_status(

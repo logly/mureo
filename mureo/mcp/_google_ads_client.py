@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 from mureo.client_factory import NoCredentialsError, open_google_ads_client
 from mureo.mcp._helpers import _no_creds_result, _opt
+from mureo.mcp.serving_providers import served_pointer, with_pointer
 
 _NO_CREDS_MSG = (
     "Credentials not found. Set environment variables "
@@ -53,5 +54,9 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
 
 
 def _no_google_creds() -> list[TextContent]:
-    """Return a Google Ads credentials-not-found error."""
-    return _no_creds_result(_NO_CREDS_MSG)
+    """Return a Google Ads credentials-not-found error.
+
+    Names the plugin tool family Google Ads is configured under in this
+    workspace, when there is one; otherwise the message is unchanged.
+    """
+    return _no_creds_result(with_pointer(_NO_CREDS_MSG, served_pointer("google_ads")))

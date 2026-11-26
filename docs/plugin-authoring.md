@@ -819,6 +819,80 @@ class ExampleGoogleProvider:
   unconfigured one; otherwise the first by provider name is shown. Only
   one provider is offered per platform.
 
+##### Routing the agent to your tool family
+
+When your provider also serves MCP tools that re-expose the platform's
+operations under a namespaced prefix (see `_mureo-shared` → *Namespaced
+built-in variants*, for example `meta_ads_acme_campaigns_list` next to the
+built-in `meta_ads_campaigns_list`), the MCP server tells the agent which
+family reaches the workspace's account.
+
+- **The tool prefix.** It is derived from your served tool names: every
+  tool that mirrors a built-in operation must carry the same
+  `<platform>_<suffix>_` prefix (here `meta_ads_acme_`), and the prefix
+  must be 1–128 characters from `[A-Za-z0-9_.-]` and must not be the start
+  of any built-in tool name (`meta_ads_ads_` is refused: the built-in
+  `meta_ads_ads_list` starts with it). Tools that mirror no built-in
+  operation are ignored, and a provider with none of them gets no routing
+  entry without a warning: its `serves_platform` is then only a configure
+  UI declaration. A provider whose tools yield more than one prefix or an
+  unusable one, whose registry name is a built-in platform key (its
+  section would be the built-in one), or whose `serves_platform` is
+  rejected gets no routing entry and the server logs a warning; nothing
+  else changes.
+- **"Configured" on the MCP side.** At least one field is declared
+  `required` and every one of them holds a non-empty value in your
+  credentials section, as the workspace's `SecretStore.load` returns it.
+  The configure card uses the same combination rule
+  (`required_fields_stored` in `mureo.core.providers`) but reads its own
+  fields after the configure UI's field scoping, so the two surfaces share
+  how the answers combine while each reads its own store. The check reads
+  only whether a value is present; no value is rendered or logged. A
+  store that raises counts as not configured (logged at WARNING with the
+  exception class).
+- **The always-on notice.** With at least one configured serving provider,
+  the server's `instructions` carry a *Platform tool families* block, one
+  line per served platform, saying whether the account is under your
+  family only, under both families, or (when the workspace is not
+  account-scoped) under your family with the built-in one working only if
+  its own connection is set up. The block is capped at 1200 characters and
+  says so when a line is dropped. A platform whose line cannot be built
+  (for example an allow-list read that raises) is left out with a WARNING
+  naming the platform and the exception class; the server still starts.
+  With no configured serving provider nothing is added, so a default
+  install's `instructions` are unchanged.
+- **The refusal.** When the allow-list for the platform is empty, a
+  built-in tool of that platform is refused before its arguments are read,
+  so the refusal is the same whatever id the call carries; it names the
+  plugin family and no id. The refusal is the built-in no-credentials result (`status: auth_error`,
+  `auth_cause: no_credentials`) naming your tool prefix, given before any
+  credential load or network call, and the journal records the call as
+  `refused`. A platform served from a local data manifest (BYOD) is not
+  refused. An allow-list read that raises stops the call, as it does in
+  the handler.
+- **The pointer.** A built-in tool's no-credentials message names your
+  configured family, except while a credential source is active: a
+  plugin running a built-in handler under `use_credential_source` is the
+  serving family itself.
+- **A refused id stays refused.** When the allow-list is non-empty, an
+  explicit id it does not contain gets the allow-list's own refusal,
+  unchanged, with no pointer to another family. Which family holds which account is stated up front by the *Platform
+  tool families* block.
+- **The allow-list contract.** The workspace allow-lists
+  (`runtime_meta_account_ids`, `runtime_google_ads_customer_ids`,
+  `runtime_search_console_sites`):
+  - With no credential source active, the allow-list names the accounts
+    the built-in connection may reach; an account reached only through a
+    serving plugin is not in it. An empty set there is what makes the
+    built-in family refuse and point at the plugin family.
+  - A plugin that runs the built-in handlers under `use_credential_source`
+    is still checked against the allow-list: the handler reads it at call
+    time, in the source's context. A backend hosting such a plugin
+    therefore returns, while that plugin's source is active
+    (`active_source_identity(platform)` is not `None`), the accounts that
+    source may reach. A plugin that builds its own client is outside this
+    check and must scope its own account.
+
 ### Reusing the built-in handlers with your own credentials
 
 The built-in `google_ads_*`, `search_console_*` and `meta_ads_*` handlers
@@ -948,7 +1022,19 @@ The rules the handlers follow while a source is active:
   `call_source(platform, method, *args)`.
 - **Ids and allow-lists are unchanged.** `customer_id` / `account_id` still
   come from the tool arguments first and from your credentials object second,
-  and the workspace allow-list is still enforced.
+  and the workspace allow-list is still enforced, read at call time in your
+  source's context. What the allow-list names:
+  - With no credential source active, the allow-list names the accounts
+    the built-in connection may reach; an account reached only through a
+    serving plugin is not in it. An empty set there is what makes the
+    built-in family refuse and point at the plugin family.
+  - A plugin that runs the built-in handlers under `use_credential_source`
+    is still checked against the allow-list: the handler reads it at call
+    time, in the source's context. A backend hosting such a plugin
+    therefore returns, while that plugin's source is active
+    (`active_source_identity(platform)` is not `None`), the accounts that
+    source may reach. A plugin that builds its own client is outside this
+    check and must scope its own account.
 - **Placeholders.** `GoogleAdsCredentials` requires `client_id`,
   `client_secret` and `refresh_token`. If your source does not hold them, fill
   placeholders: the handlers only read `customer_id`, `login_customer_id` and

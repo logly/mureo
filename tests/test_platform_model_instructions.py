@@ -20,6 +20,7 @@ from collections.abc import Iterator
 
 import pytest
 
+from mureo.mcp import server_instructions
 from mureo.policy.learning_rules import Evidence
 from mureo.policy.platform_model import (
     MAX_STATEMENT_CHARS,
@@ -333,7 +334,8 @@ def test_impersonating_a_builtin_platform_renders_nothing_on_the_server() -> Non
         )
     )
     server = _server_module()
-    assert server._platform_model_instruction() == ""
+    owners = server._plugin_tool_owners()
+    assert server_instructions.platform_model_instruction(owners) == ""
 
 
 @pytest.mark.unit

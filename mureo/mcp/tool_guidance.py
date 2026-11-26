@@ -28,9 +28,10 @@ The tool name is rendered, so it is validated
 A line reads ``- {tool name}: {note}``, and plugin collection only requires a
 tool name to be a non-empty string. A name carrying a line break could forge a
 heading or another tool's entry, and a long name would carry free text past
-the per-note cap. So a note is rendered only when its tool's name fully
-matches :data:`_TOOL_NAME_PATTERN` (ASCII letters, digits, ``_``, ``.``,
-``-``; 1 to :data:`_MAX_TOOL_NAME_CHARS` characters).
+the per-note cap. So a note is rendered only when its tool's name passes
+:func:`~mureo.policy.always_on_block.is_renderable_name` (ASCII letters,
+digits, ``_``, ``.``, ``-``; 1 to 128 characters), the rule every
+always-on line that quotes a plugin-supplied name applies.
 
 Bounded by construction, and shared fairly
 ------------------------------------------
@@ -71,14 +72,18 @@ states to the agent.
 from __future__ import annotations
 
 import logging
-import re
 import warnings
 from collections.abc import Hashable
 from typing import TYPE_CHECKING, Final
 
 from mureo.mcp.plugin_semantics import _meta_mureo
 from mureo.plugin_warnings import PluginToolWarning
-from mureo.policy.always_on_block import is_single_line, render_block
+from mureo.policy.always_on_block import (
+    MAX_RENDERED_NAME_CHARS,
+    is_renderable_name,
+    is_single_line,
+    render_block,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -97,14 +102,6 @@ MAX_GUIDANCE_CHARS = 400
 #: notes; past that, whole notes are dropped rather than letting the always-on
 #: block grow with the plugin list.
 MAX_TOTAL_CHARS = 1200
-
-#: Longest tool name a note is rendered under, so the name cannot carry free
-#: text past :data:`MAX_GUIDANCE_CHARS`.
-_MAX_TOOL_NAME_CHARS: Final = 128
-
-#: The tool-name shape a note is rendered under: nothing that can end a line,
-#: open a ``name: note`` separator or hide in the rendered text.
-_TOOL_NAME_PATTERN: Final = re.compile(rf"[A-Za-z0-9_.-]{{1,{_MAX_TOOL_NAME_CHARS}}}")
 
 #: Longest tool-name text quoted in a fault report: the name that failed the
 #: rule above may be arbitrarily long, and the report is a log line.
@@ -129,10 +126,10 @@ def _omission_note(count: int) -> str:
 
 def _unrenderable_name_reason(name: object) -> str | None:
     """Why a note cannot be rendered under ``name``, or ``None`` if it can."""
-    if isinstance(name, str) and _TOOL_NAME_PATTERN.fullmatch(name):
+    if is_renderable_name(name):
         return None
     return (
-        f"the tool name must be 1-{_MAX_TOOL_NAME_CHARS} characters of "
+        f"the tool name must be 1-{MAX_RENDERED_NAME_CHARS} characters of "
         f"[A-Za-z0-9_.-] to be rendered"
     )
 
