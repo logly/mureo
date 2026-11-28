@@ -115,7 +115,7 @@ mureo/
 │   └── provider.py      # ChatGPTAdsProvider, registration (with its change feed), disable gate, platform delivery model
 ├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
-│   ├── tool_checks.py                     # writes_to_platform / check_tool_call: dispatch's own classification and caller-error checks, for a stored call (#983, #984)
+│   ├── tool_checks.py                     # writes_to_platform / in_ops_history_scope / check_tool_call: dispatch's own classification, ops-history scope and caller-error checks, for a stored call (#983, #984)
 │   ├── _helpers.py                        # Shared handler utilities
 │   ├── journal.py                         # Append-only JOURNAL.jsonl of every tool call + outcome (#758)
 │   ├── journal_chain.py                   # The append itself (#758 phase 6): rotation, the `prev`/`h`

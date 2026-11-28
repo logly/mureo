@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Added
+
+- **`mureo.mcp.in_ops_history_scope(name)`** answers whether dispatch takes `expected` / `decision_id` / `approval` for a tool. A caller that stores a call and attaches those parameters when it dispatches needs this: dispatch removes the three only for a tool in ops-history scope (`reason` is removed for every tool that carries the injected `reason`). A built-in tool outside scope rejects them as unknown properties, but a plugin tool whose schema allows additional properties lets them through to its handler, which passes them to the platform, and for that tool `check_tool_call` passes and cannot tell the caller. The answer is `name in` the dispatcher's own scope set, so the two cannot disagree: `False` for read tools, `rollback_apply`, every `mureo_*` bookkeeping tool except `mureo_batch_begin`, and a mutating tool whose own schema has no `properties` object or already declares `reason` or one of the three. An unknown name raises `ValueError("Unknown tool: <name>")`, as `writes_to_platform` does. See "Checking a stored call before dispatch" in `docs/mcp-server.md`.
+
 ## [0.47.0] - 2026-11-27
 
 ### Added

@@ -312,7 +312,7 @@ mureo/
 ├── mcp/                     # MCP server
 │   ├── __main__.py                        # python -m mureo.mcp entry point
 │   ├── server.py                          # MCP server setup (stdio transport)
-│   ├── tool_checks.py                     # writes_to_platform / check_tool_call: dispatch's own classification and caller-error checks, for a stored call (#983, #984)
+│   ├── tool_checks.py                     # writes_to_platform / in_ops_history_scope / check_tool_call: dispatch's own classification, ops-history scope and caller-error checks, for a stored call (#983, #984)
 │   ├── server_instructions.py             # Assembles the MCP `instructions` sections in order; never imports server
 │   ├── serving_providers.py               # Plugins serving a built-in platform under their own tool prefix:
 │   │                                      #   the Platform tool families block, the built-in refusal and the
