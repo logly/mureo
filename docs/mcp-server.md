@@ -1518,16 +1518,18 @@ ValueError: Required parameter customer_id is not specified
 
 ### Checking a stored call before dispatch
 
-A caller that stores a tool call and dispatches it later (an approval queue, a scheduled run) can ask two questions up front. Both functions live in `mureo/mcp/tool_checks.py` and are exported from `mureo.mcp` (#983, #984):
+A caller that stores a tool call and dispatches it later (an approval queue, a scheduled run) can ask three questions up front. All three functions live in `mureo/mcp/tool_checks.py` and are exported from `mureo.mcp` (#983, #984):
 
 ```python
-from mureo.mcp import check_tool_call, writes_to_platform
+from mureo.mcp import check_tool_call, in_ops_history_scope, writes_to_platform
 
 writes_to_platform("google_ads_campaigns_update_status")  # True
+in_ops_history_scope("google_ads_campaigns_update_status")  # True
 check_tool_call("google_ads_campaigns_list", {"status_filter": "PAUSED"})  # None
 ```
 
 - **`writes_to_platform(name)`** returns `True` when dispatching the tool can change something on a platform account (Google Ads, Meta Ads, Search Console, a plugin platform). A plugin tool answers with its declared semantics, and one that declares none counts as writing. `rollback_apply` is `True`: it re-applies a change on the platform it reverses. Tools that write mureo's local state (`mureo_state_*`, `mureo_strategy_set`, `mureo_batch_*`), analysis tools and `creative_studio_*` are `False`. An unknown name raises `ValueError("Unknown tool: <name>")`, so a typo is never reported as safe.
+- **`in_ops_history_scope(name)`** returns `True` when dispatch takes `expected` / `decision_id` / `approval` for the tool: it is served with those three properties and `reason`, dispatch removes all four from the arguments before the handler runs, and the call can be linked to a decision in operations history (whether it is depends on what the call carries — a reason, an approval, a decision id or an open batch — and on the workspace having a `STATE.json`). Read tools, `rollback_apply`, every `mureo_*` bookkeeping tool except `mureo_batch_begin`, and a mutating tool whose own schema has no `properties` object or already declares `reason` or one of the three are `False`. For those, the three are not removed. A built-in tool's schema is closed (`additionalProperties: false`), so it rejects them as unknown properties, in `check_tool_call` and at dispatch. A plugin tool whose schema allows additional properties lets them through to its handler, which passes them to the platform; for that tool `check_tool_call` passes and cannot tell the caller. Attach the three to a stored call only when this returns `True`. An unknown name raises `ValueError("Unknown tool: <name>")`.
 - **`check_tool_call(name, arguments)`** raises `ValueError` when dispatch would reject the call as a caller error: an unknown tool, a malformed `reason` / `expected` / `decision_id` / `approval`, an `inputSchema` violation, switching ops history off through `mureo_state_settings_set`, or a missing `reason` / `expected` while ops history is on. The message is the one dispatch raises, because the same functions run in the same order. It runs no policy gate, calls no platform, writes nothing and journals nothing. It reads the workspace's `STATE.json` only to learn whether ops history is enabled, as dispatch does. A call that passes can still be refused by a policy gate or fail on the platform. `ToolSchemaUnusableError` (the tool's schema cannot check the call) propagates unchanged: it is not a caller error.
 
 ### Rate Limiting

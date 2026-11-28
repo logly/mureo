@@ -15,17 +15,37 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from mcp.types import Tool, ToolAnnotations
 
 from mureo.context.models import StateDocument
 from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import write_state_file
 from mureo.core.actor import ACTION_REASON_MAX_CHARS
+from mureo.core.providers.registry import ProviderEntry
 from mureo.core.runtime_context import reset_runtime_context
-from mureo.mcp import check_tool_call, journal, server, writes_to_platform
-from mureo.mcp._ops_history_param import EXPECTED_REQUIRED
+from mureo.mcp import (
+    check_tool_call,
+    in_ops_history_scope,
+    journal,
+    server,
+    writes_to_platform,
+)
+from mureo.mcp._ops_history_param import (
+    APPROVAL_PARAM,
+    APPROVAL_PROPERTY,
+    BATCH_BEGIN_TOOL,
+    DECISION_ID_PARAM,
+    DECISION_ID_PROPERTY,
+    EXPECTED_PARAM,
+    EXPECTED_REQUIRED,
+    INJECTED_EXPECTED_PROPERTY,
+    ROLLBACK_APPLY_TOOL,
+    split_ops_params,
+)
 from mureo.mcp._plugin_tables import _PLUGIN_DISPATCH, _PLUGIN_SEMANTICS
 from mureo.mcp._tools_settings import SWITCH_OFF_REFUSED
 from mureo.mcp.plugin_semantics import ToolSemantics
+from tests._server_reload import reloaded_server
 
 pytestmark = [
     pytest.mark.unit,
@@ -118,6 +138,141 @@ class TestWritesToPlatformPlugins:
     ) -> None:
         _add_plugin(monkeypatch, "probe_reports_get")
         assert writes_to_platform("probe_reports_get") is True
+
+
+_PROBE_UPDATE = "probe_ads_campaigns_update"
+_PROBE_OWN_REASON = "probe_ads_notes_update"
+_PROBE_OWN_EXPECTED = "probe_ads_budgets_update"
+_PROBE_NO_PROPERTIES = "probe_ads_ads_pause"
+_PROBE_READ = "probe_ads_reports_get"
+_OPS_PARAMS = (EXPECTED_PARAM, DECISION_ID_PARAM, APPROVAL_PARAM)
+
+#: What each probe answers. ``_PROBE_OWN_EXPECTED`` gains the injected
+#: ``reason`` but keeps its own ``expected``, so it carries ``reason`` and is
+#: still outside ops-history scope.
+_PROBE_SCOPE: dict[str, bool] = {
+    _PROBE_UPDATE: True,
+    _PROBE_OWN_REASON: False,
+    _PROBE_OWN_EXPECTED: False,
+    _PROBE_NO_PROPERTIES: False,
+    _PROBE_READ: False,
+}
+
+#: The properties dispatch injects into a tool in scope. A tool outside scope
+#: may declare a property of the same name itself (``mureo_outcome_evaluate``
+#: has its own ``expected``), but never carries the injected one.
+_INJECTED_OPS_PROPERTIES: dict[str, Any] = {
+    EXPECTED_PARAM: dict(INJECTED_EXPECTED_PROPERTY),
+    DECISION_ID_PARAM: dict(DECISION_ID_PROPERTY),
+    APPROVAL_PARAM: dict(APPROVAL_PROPERTY),
+}
+
+
+def _probe_tool(
+    name: str, properties: dict[str, Any] | None, read_only: bool = False
+) -> Tool:
+    schema: dict[str, Any] = {"type": "object"}
+    if properties is not None:
+        schema["properties"] = properties
+    return Tool(
+        name=name,
+        description=name,
+        inputSchema=schema,
+        annotations=ToolAnnotations(readOnlyHint=read_only),
+    )
+
+
+class _ProbeProvider:
+    """A plugin serving one tool of each shape the scope question tells apart."""
+
+    name = "probe_ads"
+    display_name = "Probe Ads"
+    capabilities: frozenset[Any] = frozenset()
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        campaign = {"campaign_id": {"type": "string"}}
+        own_expected = {**campaign, EXPECTED_PARAM: {"type": "string"}}
+        return (
+            _probe_tool(_PROBE_UPDATE, campaign),
+            _probe_tool(_PROBE_OWN_REASON, {**campaign, "reason": {"type": "string"}}),
+            _probe_tool(_PROBE_OWN_EXPECTED, own_expected),
+            _probe_tool(_PROBE_NO_PROPERTIES, None),
+            _probe_tool(_PROBE_READ, campaign, read_only=True),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return []
+
+
+def _discover_probe(**_kw: Any) -> tuple[ProviderEntry, ...]:
+    return (
+        ProviderEntry(
+            name=_ProbeProvider.name,
+            display_name=_ProbeProvider.display_name,
+            capabilities=_ProbeProvider.capabilities,
+            provider_class=_ProbeProvider,
+            source_distribution="probe-ads",
+        ),
+    )
+
+
+def _assert_matches_dispatch(served: Any, tool: Tool) -> None:
+    """``tool``'s answer agrees with what dispatch does with its arguments."""
+    in_scope = in_ops_history_scope(tool.name)
+    _, rest = split_ops_params(tool.name, {EXPECTED_PARAM: CPA_DOWN}, served._OPS_TOOLS)
+    assert (EXPECTED_PARAM not in rest) is in_scope, tool.name
+    properties = (tool.inputSchema or {}).get("properties") or {}
+    if in_scope:
+        assert all(param in properties for param in _OPS_PARAMS), tool.name
+    else:
+        injected = [
+            param
+            for param, injected_property in _INJECTED_OPS_PROPERTIES.items()
+            if properties.get(param) == injected_property
+        ]
+        assert injected == [], tool.name
+
+
+class TestInOpsHistoryScope:
+    def test_a_builtin_platform_change_is_in_scope(self) -> None:
+        assert in_ops_history_scope(STATUS_TOOL) is True
+
+    def test_a_builtin_read_is_not(self) -> None:
+        assert in_ops_history_scope(LIST_TOOL) is False
+
+    def test_batch_begin_is_the_one_bookkeeping_tool_in_scope(self) -> None:
+        assert in_ops_history_scope(BATCH_BEGIN_TOOL) is True
+
+    @pytest.mark.parametrize(
+        "name",
+        [ROLLBACK_APPLY_TOOL, "mureo_batch_end", "mureo_state_upsert_campaign"],
+    )
+    def test_rollback_and_other_bookkeeping_are_not(self, name: str) -> None:
+        assert in_ops_history_scope(name) is False
+
+    def test_an_unknown_name_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="^Unknown tool: nope_nope$"):
+            in_ops_history_scope("nope_nope")
+
+    def test_a_builtin_tool_outside_scope_rejects_expected(
+        self, workspace: Path
+    ) -> None:
+        assert in_ops_history_scope(LIST_TOOL) is False
+        with pytest.raises(ValueError, match=EXPECTED_PARAM):
+            check_tool_call(LIST_TOOL, {EXPECTED_PARAM: CPA_DOWN})
+
+    def test_plugin_tools(self) -> None:
+        with reloaded_server(_discover_probe) as served:
+            assert _PROBE_OWN_EXPECTED in served._REASON_TOOLS
+            answers = {name: in_ops_history_scope(name) for name in _PROBE_SCOPE}
+        assert answers == _PROBE_SCOPE
+
+    async def test_every_listed_tool_matches_dispatch(self) -> None:
+        with reloaded_server(_discover_probe) as served:
+            listed = await served.handle_list_tools()
+            assert set(_PROBE_SCOPE) <= {tool.name for tool in listed}
+            for tool in listed:
+                _assert_matches_dispatch(served, tool)
 
 
 @pytest.fixture
